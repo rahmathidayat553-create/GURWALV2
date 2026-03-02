@@ -80,7 +80,7 @@ export const InputKehadiranAdmin: React.FC<Props> = ({ currentUser, showToast })
 
   // 3. Check Validity & Fetch Attendance when Date or Student List changes
   useEffect(() => {
-    if (siswaList.length > 0 && selectedKelas) {
+    if (siswaList.length > 0) {
       validateDateAndFetch();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -184,7 +184,7 @@ export const InputKehadiranAdmin: React.FC<Props> = ({ currentUser, showToast })
     try {
         const studentIds = siswaList.map(s => s.id);
         
-        // Fetch existing attendance for these students on this date
+        // Fetch existing attendance for these students on this date (Independent of Teacher)
         const { data } = await supabase
           .from('kehadiran')
           .select('*')
@@ -209,7 +209,7 @@ export const InputKehadiranAdmin: React.FC<Props> = ({ currentUser, showToast })
                 newOriginalState[s.id] = record.status; // Simpan snapshot DB
             } else {
                 newFormState[s.id] = {
-                    status: null, 
+                    status: 'HADIR', 
                     catatan: ''
                 };
             }
@@ -259,7 +259,9 @@ export const InputKehadiranAdmin: React.FC<Props> = ({ currentUser, showToast })
                     status: form.status,
                     catatan: form.catatan
                 };
-                if (form.id) record.id = form.id;
+                // ID tidak perlu dimasukkan jika menggunakan Upsert on conflict, 
+                // tapi jika kita ingin spesifik update row tertentu (walau onconflict menangani ini),
+                // kita biarkan logic upsert bekerja.
                 return record;
             });
 
@@ -269,7 +271,10 @@ export const InputKehadiranAdmin: React.FC<Props> = ({ currentUser, showToast })
             return;
         }
 
-        const { error } = await supabase.from('kehadiran').upsert(payload);
+        const { error } = await supabase
+            .from('kehadiran')
+            .upsert(payload, { onConflict: 'id_siswa,tanggal' });
+            
         if (error) throw error;
 
         showToast(isDataSaved ? '✅ Data diperbarui' : '✅ Data disimpan', 'success');

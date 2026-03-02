@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Guru } from '../../types';
@@ -225,12 +226,13 @@ export const ImportKehadiranTemplate: React.FC<Props> = ({ currentUser, showToas
         return;
       }
 
-      // 2. AMBIL DATA KEHADIRAN EXISTING (Fitur Baru)
-      // Kita ambil data kehadiran yang sudah ada di DB untuk tanggal-tanggal yang dipilih
+      // 2. AMBIL DATA KEHADIRAN EXISTING (INDEPENDENT OF TEACHER)
+      const studentIds = siswaData.map(s => s.id_siswa);
+      
       const { data: existingAttendance } = await supabase
         .from('kehadiran')
         .select('id_siswa, tanggal, status')
-        .eq('id_guru', currentUser.id)
+        .in('id_siswa', studentIds) // Filter by ID SISWA ONLY
         .in('tanggal', selectedDates);
 
       // Buat Map: "ID_SISWA_TANGGAL" -> "KODE STATUS"
@@ -355,18 +357,22 @@ export const ImportKehadiranTemplate: React.FC<Props> = ({ currentUser, showToas
         let errorCount = 0;
         const totalRows = data.length;
 
+        // BATCH PROCESSING
+        const batchSize = 50;
+        let batchPayload: any[] = [];
+
         for (let i = 0; i < totalRows; i++) {
           const row: any = data[i];
           const nisn = row['NISN'] ? String(row['NISN']).replace(/['"]/g, '').trim() : '';
           const nama = row['NAMA'] ? String(row['NAMA']).trim() : '';
 
           if (!nisn && !nama) {
-             const currentProgress = Math.round(((i + 1) / totalRows) * 100);
-             setImportProgress(currentProgress);
              continue; 
           }
 
           let studentId = '';
+          // Optimisasi: Sebaiknya pre-fetch all students, tapi untuk simplicity kita fetch per row (atau per batch better)
+          // Untuk amannya fetch per row dulu atau buat map NISN -> ID jika memungkinkan.
           const { data: foundSiswa } = await supabase
              .from('siswa')
              .select('id')
@@ -399,37 +405,27 @@ export const ImportKehadiranTemplate: React.FC<Props> = ({ currentUser, showToas
                   else if (['A', 'ALPHA', 'ALPA'].includes(rawStatus)) statusDb = 'ALPHA';
 
                   if (statusDb) {
-                      // UPSERT Logic: Update jika ada, Insert jika baru
-                      // Kita gunakan manual upsert flow untuk keamanan logika
-                      const { data: existingRecord } = await supabase
-                          .from('kehadiran')
-                          .select('id')
-                          .eq('id_guru', currentUser.id)
-                          .eq('id_siswa', studentId)
-                          .eq('tanggal', key)
-                          .maybeSingle();
-
-                      if (existingRecord) {
-                          // Update Existing
-                          await supabase
-                              .from('kehadiran')
-                              .update({ status: statusDb })
-                              .eq('id', existingRecord.id);
-                      } else {
-                          // Insert New
-                          await supabase
-                              .from('kehadiran')
-                              .insert([{
-                                  id_guru: currentUser.id,
-                                  id_siswa: studentId,
-                                  tanggal: key,
-                                  status: statusDb
-                              }]);
-                      }
+                      batchPayload.push({
+                          id_guru: currentUser.id,
+                          id_siswa: studentId,
+                          tanggal: key,
+                          status: statusDb
+                      });
                   }
                }
             }
             processedCount++;
+          }
+
+          // Process Batch
+          if (batchPayload.length >= batchSize || i === totalRows - 1) {
+              if (batchPayload.length > 0) {
+                  // UPSERT BATCH
+                  await supabase
+                      .from('kehadiran')
+                      .upsert(batchPayload, { onConflict: 'id_siswa,tanggal' });
+                  batchPayload = [];
+              }
           }
 
           const currentProgress = Math.round(((i + 1) / totalRows) * 100);

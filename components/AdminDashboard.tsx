@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import * as XLSX from 'xlsx';
@@ -8,11 +9,12 @@ import { useSekolah } from '../hooks/useSekolah';
 interface MissingRecord {
   tanggal: string;
   nama_siswa: string;
-  nama_guru: string;
+  kelas: string;
+  nama_guru: string; // Nama Wali (jika ada)
 }
 
 interface GroupedMissing {
-  guru: string;
+  kelas: string;
   items: MissingRecord[];
 }
 
@@ -52,7 +54,7 @@ export const AdminDashboard: React.FC = () => {
     fetchDashboardStats();
   }, []);
 
-  // --- LOGIC MONITORING ---
+  // --- LOGIC MONITORING REFACTORED (SISWA-CENTRIC) ---
   const handleCheckCompleteness = async () => {
     setMonitorLoading(true);
     setCheckPerformed(false);
@@ -63,44 +65,31 @@ export const AdminDashboard: React.FC = () => {
         const { data: sekolah } = await supabase.from('sekolah').select('hari_sekolah').limit(1).maybeSingle();
         const hariSekolah = sekolah?.hari_sekolah || 5;
 
-        // 2. Define Date Boundaries (Strict String Logic to avoid Timezone shifts)
-        const [yearStr, monthStr] = monitorMonth.split('-'); // e.g., "2026", "01"
+        // 2. Define Date Boundaries
+        const [yearStr, monthStr] = monitorMonth.split('-'); 
         const year = parseInt(yearStr);
         const month = parseInt(monthStr);
         
-        // Awal Bulan (YYYY-MM-01)
         const startDateStr = `${yearStr}-${monthStr}-01`;
-        
-        // Akhir Bulan (YYYY-MM-LastDay)
-        const lastDayOfMonth = new Date(year, month, 0).getDate(); // day 0 of next month = last day of this month
+        const lastDayOfMonth = new Date(year, month, 0).getDate();
         const endDateStr = `${yearStr}-${monthStr}-${String(lastDayOfMonth).padStart(2, '0')}`;
-        
-        // Hari Ini (YYYY-MM-DD)
         const todayStr = new Date().toISOString().split('T')[0];
 
-        // Tentukan Batas Akhir Pengecekan (Check Until)
-        // Default: Akhir Bulan
+        // Tentukan batas akhir (tidak boleh masa depan)
         let checkUntilStr = endDateStr;
-
-        // Jika Hari Ini LEBIH KECIL dari Akhir Bulan (artinya kita sedang di tengah bulan tsb atau bulan sebelumnya)
-        // Maka batasi sampai Hari Ini.
-        // Tapi HANYA JIKA Hari Ini >= Awal Bulan (jangan mundur ke bulan sebelumnya jika user pilih bulan depan)
         if (todayStr < endDateStr) {
             checkUntilStr = todayStr;
         }
 
-        // --- GUARD CLAUSE / VALIDASI TAMBAHAN ---
-        // Jika batas akhir pengecekan (misal Hari Ini: 26 Jan) LEBIH KECIL dari Tanggal Awal Bulan yg dipilih (misal: 1 Feb)
-        // Artinya Admin memilih bulan masa depan. 
-        // Maka: Stop proses, return kosong.
+        // Validate range
         if (checkUntilStr < startDateStr) {
             setCheckPerformed(true);
             setMonitorLoading(false);
-            setMissingData([]); // Hasil kosong valid
+            setMissingData([]);
             return;
         }
 
-        // 3. Get Holidays (Strictly within range)
+        // 3. Get Holidays
         const { data: holidays } = await supabase
             .from('kalender_pendidikan')
             .select('tanggal')
@@ -111,18 +100,16 @@ export const AdminDashboard: React.FC = () => {
 
         // 4. Generate Valid Active Days
         const validDates: string[] = [];
-        // Loop Date object (set jam 12 siang untuk aman dari shifting)
-        let current = new Date(year, month - 1, 1, 12, 0, 0);
-        // Parse checkUntilStr untuk limit loop
+        let current = new Date(year, month - 1, 1, 12, 0, 0); // Noon to avoid TZ issues
         const checkUntilDate = new Date(checkUntilStr + 'T12:00:00');
 
         while (current <= checkUntilDate) {
-            const day = current.getDay(); // 0=Sun, 6=Sat
+            const day = current.getDay(); // 0=Sun
             const dateStr = current.toISOString().split('T')[0];
 
             let isSchoolDay = true;
-            if (day === 0) isSchoolDay = false; // Minggu Libur
-            if (hariSekolah === 5 && day === 6) isSchoolDay = false; // Sabtu Libur jika 5 hari
+            if (day === 0) isSchoolDay = false;
+            if (hariSekolah === 5 && day === 6) isSchoolDay = false;
             if (isSchoolDay && !holidaySet.has(dateStr)) {
                 validDates.push(dateStr);
             }
@@ -135,64 +122,79 @@ export const AdminDashboard: React.FC = () => {
             return;
         }
 
-        // 5. Get All Assignments (Siswa & Guru Wali)
-        const { data: assignments } = await supabase
-            .from('bimbingan')
-            .select('id_siswa, id_guru, siswa(nama), guru(nama)');
+        // 5. GET ALL STUDENTS (Source of Truth)
+        // Kita perlu data siswa + kelas + guru wali (jika ada) untuk laporan
+        const { data: allStudents } = await supabase
+            .from('siswa')
+            .select(`
+                id, nama, 
+                kelas (nama),
+                bimbingan (
+                    guru (nama)
+                )
+            `); // Note: bimbingan bisa kosong jika belum diassign
 
-        if (!assignments || assignments.length === 0) {
+        if (!allStudents || allStudents.length === 0) {
             setCheckPerformed(true);
             setMonitorLoading(false);
             return;
         }
 
-        // 6. Get Existing Attendance (STRICT QUERY BOUNDARIES)
-        // Pastikan query dibatasi gte(startDateStr) agar data bulan sebelumnya TIDAK bocor.
+        // 6. GET ATTENDANCE MAP (Based on Siswa ID + Date)
+        // Kita ambil *semua* record kehadiran di rentang tanggal valid
         const { data: attendance } = await supabase
             .from('kehadiran')
             .select('id_siswa, tanggal')
-            .gte('tanggal', validDates[0]) // Minimal tanggal valid pertama
-            .lte('tanggal', validDates[validDates.length - 1]); // Maksimal tanggal valid terakhir
+            .gte('tanggal', validDates[0])
+            .lte('tanggal', validDates[validDates.length - 1]);
 
-        // Buat Set untuk lookup cepat: "YYYY-MM-DD_ID_SISWA"
         const attendanceSet = new Set(attendance?.map(a => `${a.tanggal}_${a.id_siswa}`));
 
-        // 7. Cross Check
+        // 7. CROSS CHECK
         const missing: MissingRecord[] = [];
 
-        // Loop Tanggal Aktif -> Loop Siswa Binaan
+        // Loop: Tanggal Aktif -> Siswa
         validDates.forEach(date => {
-            // @ts-ignore
-            assignments.forEach((b: any) => {
-                const key = `${date}_${b.id_siswa}`;
+            allStudents.forEach((student: any) => {
+                const key = `${date}_${student.id}`;
                 if (!attendanceSet.has(key)) {
+                    // Get Guru Wali Name (safely)
+                    let namaWali = 'Belum Ada Wali';
+                    if (student.bimbingan && student.bimbingan.length > 0 && student.bimbingan[0].guru) {
+                        namaWali = student.bimbingan[0].guru.nama;
+                    }
+
                     missing.push({
                         tanggal: date,
-                        nama_siswa: b.siswa?.nama || 'Unknown',
-                        nama_guru: b.guru?.nama || 'Unknown'
+                        nama_siswa: student.nama,
+                        kelas: student.kelas?.nama || 'Tanpa Kelas',
+                        nama_guru: namaWali
                     });
                 }
             });
         });
 
-        // 8. Grouping by Guru
+        // 8. Grouping by Kelas (Better for Admin)
         const groupedMap = new Map<string, MissingRecord[]>();
         missing.forEach(item => {
-            if (!groupedMap.has(item.nama_guru)) {
-                groupedMap.set(item.nama_guru, []);
+            if (!groupedMap.has(item.kelas)) {
+                groupedMap.set(item.kelas, []);
             }
-            groupedMap.get(item.nama_guru)?.push(item);
+            groupedMap.get(item.kelas)?.push(item);
         });
 
-        // Sort by Date inside groups
         const groupedResult: GroupedMissing[] = [];
-        groupedMap.forEach((items, guru) => {
-            items.sort((a, b) => a.tanggal.localeCompare(b.tanggal));
-            groupedResult.push({ guru, items });
+        groupedMap.forEach((items, kelas) => {
+            // Sort by Date then Student Name
+            items.sort((a, b) => {
+                const dateCompare = a.tanggal.localeCompare(b.tanggal);
+                return dateCompare !== 0 ? dateCompare : a.nama_siswa.localeCompare(b.nama_siswa);
+            });
+            groupedResult.push({ kelas, items });
         });
 
-        // Sort Groups by Guru Name
-        groupedResult.sort((a, b) => a.guru.localeCompare(b.guru));
+        // Sort Groups by Class Name
+        groupedResult.sort((a, b) => a.kelas.localeCompare(b.kelas));
 
         setMissingData(groupedResult);
         setCheckPerformed(true);
@@ -211,8 +213,9 @@ export const AdminDashboard: React.FC = () => {
             No: 1,
             Tanggal: '-',
             'Nama Siswa': '-',
+            'Kelas': '-',
             'Nama Guru Wali': '-',
-            Status: 'Tidak ada data kehadiran yang belum diinput pada periode ini'
+            Status: 'Lengkap'
         }];
     }
 
@@ -224,7 +227,8 @@ export const AdminDashboard: React.FC = () => {
                 No: counter++,
                 Tanggal: item.tanggal,
                 'Nama Siswa': item.nama_siswa,
-                'Nama Guru Wali': group.guru,
+                'Kelas': group.kelas,
+                'Nama Guru Wali': item.nama_guru,
                 Status: 'Belum Input'
             });
         });
@@ -247,12 +251,12 @@ export const AdminDashboard: React.FC = () => {
         [(sekolah.nama || 'SEKOLAH ...').toUpperCase()],
         [`NPSN: ${sekolah.npsn || '-'} | Alamat: ${sekolah.alamat || '-'}`],
         [], // Spacing
-        ['LAPORAN MONITORING KELENGKAPAN KEHADIRAN GURU WALI'],
+        ['LAPORAN MONITORING KELENGKAPAN KEHADIRAN (GLOBAL)'],
         [`Periode: ${getPeriodLabel()}`],
         [`Tanggal Export: ${exportDate}`],
         [],
-        ['No', 'Tanggal', 'Nama Siswa', 'Nama Guru Wali', 'Status'], // Table Header
-        ...rows.map(r => [r.No, r.Tanggal, r['Nama Siswa'], r['Nama Guru Wali'], r.Status])
+        ['No', 'Tanggal', 'Nama Siswa', 'Kelas', 'Nama Guru Wali', 'Status'],
+        ...rows.map(r => [r.No, r.Tanggal, r['Nama Siswa'], r.Kelas, r['Nama Guru Wali'], r.Status])
     ];
 
     const wb = XLSX.utils.book_new();
@@ -260,11 +264,10 @@ export const AdminDashboard: React.FC = () => {
     
     // Merge Cells for Title
     if(!ws['!merges']) ws['!merges'] = [];
-    ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }); // School Name
-    ws['!merges'].push({ s: { r: 1, c: 0 }, e: { r: 1, c: 4 } }); // Address
-    ws['!merges'].push({ s: { r: 3, c: 0 }, e: { r: 3, c: 4 } }); // Report Title
+    ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } });
+    ws['!merges'].push({ s: { r: 1, c: 0 }, e: { r: 1, c: 5 } });
+    ws['!merges'].push({ s: { r: 3, c: 0 }, e: { r: 3, c: 5 } });
 
-    // Add Sheet
     XLSX.utils.book_append_sheet(wb, ws, "Monitoring Kehadiran");
     XLSX.writeFile(wb, `Monitoring_Kehadiran_${monitorMonth}.xlsx`);
   };
@@ -274,7 +277,6 @@ export const AdminDashboard: React.FC = () => {
     const pageWidth = doc.internal.pageSize.getWidth();
     let yPos = 15;
 
-    // --- KOP SURAT ---
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
     doc.text((sekolah.nama || "SEKOLAH ...").toUpperCase(), pageWidth / 2, yPos, { align: "center" });
@@ -288,11 +290,10 @@ export const AdminDashboard: React.FC = () => {
     doc.setLineWidth(0.5);
     doc.line(10, yPos, pageWidth - 10, yPos);
 
-    // --- JUDUL & METADATA ---
     yPos += 15;
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
-    doc.text("LAPORAN MONITORING KEHADIRAN GURU WALI", pageWidth / 2, yPos, { align: "center" });
+    doc.text("LAPORAN MONITORING KEHADIRAN SISWA", pageWidth / 2, yPos, { align: "center" });
     
     yPos += 7;
     doc.setFontSize(10);
@@ -303,21 +304,19 @@ export const AdminDashboard: React.FC = () => {
 
     yPos += 10;
 
-    // --- TABLE ---
     const rows = getExportData();
-    const tableBody = rows.map(r => [r.No, r.Tanggal, r['Nama Siswa'], r['Nama Guru Wali'], r.Status]);
+    const tableBody = rows.map(r => [r.No, r.Tanggal, r['Nama Siswa'], r.Kelas, r['Nama Guru Wali'], r.Status]);
 
     autoTable(doc, {
         startY: yPos,
-        head: [['No', 'Tanggal', 'Nama Siswa', 'Nama Guru Wali', 'Status']],
+        head: [['No', 'Tanggal', 'Nama Siswa', 'Kelas', 'Wali', 'Status']],
         body: tableBody,
         theme: 'grid',
-        headStyles: { fillColor: [55, 65, 81] }, // Dark Gray
-        styles: { fontSize: 9 },
+        headStyles: { fillColor: [55, 65, 81] }, 
+        styles: { fontSize: 8 },
         margin: { top: 10, bottom: 20 }
     });
 
-    // --- FOOTER ---
     const totalPages = (doc as any).internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
@@ -358,7 +357,7 @@ export const AdminDashboard: React.FC = () => {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
             <div>
                 <h3 className="text-xl font-bold text-white">📡 Monitoring Kelengkapan Absensi</h3>
-                <p className="text-gray-400 text-sm mt-1">Cek guru wali yang belum mengisi absensi pada hari aktif.</p>
+                <p className="text-gray-400 text-sm mt-1">Cek seluruh siswa yang belum memiliki data kehadiran pada hari aktif.</p>
             </div>
             <div>
                 <button 
@@ -381,34 +380,16 @@ export const AdminDashboard: React.FC = () => {
                         <h3 className="text-xl font-bold text-white flex items-center gap-2">
                             <span>🕵️</span> Monitoring Kelengkapan Input
                         </h3>
-                        <p className="text-gray-400 text-sm mt-1">Cek data kehadiran yang BELUM diinput.</p>
+                        <p className="text-gray-400 text-sm mt-1">Sistem akan mengecek silang seluruh siswa vs data kehadiran.</p>
                     </div>
                     <div className="flex gap-2 items-center">
-                        {/* EXPORT BUTTONS (Only if Check Performed) */}
                         {checkPerformed && (
                             <>
-                                <button 
-                                    onClick={handleExportExcel}
-                                    className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-sm font-medium transition flex items-center gap-2 shadow"
-                                    title="Export Excel"
-                                >
-                                    📊 Excel
-                                </button>
-                                <button 
-                                    onClick={handleExportPDF}
-                                    className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-sm font-medium transition flex items-center gap-2 shadow"
-                                    title="Export PDF"
-                                >
-                                    📄 PDF
-                                </button>
+                                <button onClick={handleExportExcel} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-sm font-medium transition flex items-center gap-2 shadow">📊 Excel</button>
+                                <button onClick={handleExportPDF} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-sm font-medium transition flex items-center gap-2 shadow">📄 PDF</button>
                             </>
                         )}
-                        <button 
-                            onClick={() => setIsMonitorOpen(false)}
-                            className="text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 w-8 h-8 rounded-full flex items-center justify-center transition ml-4"
-                        >
-                            &times;
-                        </button>
+                        <button onClick={() => setIsMonitorOpen(false)} className="text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 w-8 h-8 rounded-full flex items-center justify-center transition ml-4">&times;</button>
                     </div>
                 </div>
 
@@ -428,7 +409,7 @@ export const AdminDashboard: React.FC = () => {
                         {monitorLoading ? 'Memeriksa...' : '🚀 Mulai Pengecekan'}
                     </button>
                     <div className="text-xs text-gray-500 ml-auto hidden md:block text-right">
-                        * Pengecekan mengecualikan hari libur & tanggal masa depan.
+                        * Pengecekan berbasis Tabel Siswa (Akurat meski pindah guru).
                     </div>
                 </div>
 
@@ -437,7 +418,7 @@ export const AdminDashboard: React.FC = () => {
                     {monitorLoading ? (
                         <div className="flex flex-col items-center justify-center h-48 text-gray-400">
                             <span className="text-4xl mb-3 animate-spin">⏳</span>
-                            <p>Sedang memindai data kehadiran seluruh sekolah...</p>
+                            <p>Sedang memindai kehadiran seluruh siswa...</p>
                         </div>
                     ) : !checkPerformed ? (
                         <div className="flex flex-col items-center justify-center h-48 text-gray-500 border-2 border-dashed border-gray-700 rounded-lg">
@@ -447,23 +428,23 @@ export const AdminDashboard: React.FC = () => {
                     ) : missingData.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-48 text-green-400 bg-green-900/10 border border-green-900/30 rounded-lg">
                             <span className="text-5xl mb-3">🎉</span>
-                            <h4 className="text-xl font-bold">Semua Lengkap!</h4>
-                            <p className="text-green-300/70 text-sm mt-1">Tidak ada data kehadiran yang terlewat pada bulan ini.</p>
+                            <h4 className="text-xl font-bold">Lengkap!</h4>
+                            <p className="text-green-300/70 text-sm mt-1">Seluruh siswa memiliki data kehadiran pada bulan ini.</p>
                         </div>
                     ) : (
                         <div className="space-y-6">
                             <div className="bg-red-900/20 border border-red-800 p-3 rounded-lg text-red-200 text-sm flex items-center gap-2">
-                                <span>⚠️</span> Ditemukan <strong>{missingData.reduce((acc, curr) => acc + curr.items.length, 0)}</strong> data belum diinput.
+                                <span>⚠️</span> Ditemukan <strong>{missingData.reduce((acc, curr) => acc + curr.items.length, 0)}</strong> siswa belum diabsen pada tanggal tertentu.
                             </div>
 
                             {missingData.map((group, idx) => (
                                 <div key={idx} className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
                                     <div className="bg-gray-700 px-4 py-2 flex justify-between items-center">
                                         <h4 className="font-bold text-white flex items-center gap-2">
-                                            👨‍🏫 {group.guru}
+                                            🏫 Kelas {group.kelas}
                                         </h4>
                                         <span className="bg-red-600 text-white text-xs px-2 py-0.5 rounded-full">
-                                            {group.items.length} Data
+                                            {group.items.length} Missing
                                         </span>
                                     </div>
                                     <table className="w-full text-sm text-left">
@@ -471,6 +452,7 @@ export const AdminDashboard: React.FC = () => {
                                             <tr>
                                                 <th className="px-4 py-2">Tanggal</th>
                                                 <th className="px-4 py-2">Nama Siswa</th>
+                                                <th className="px-4 py-2">Guru Wali</th>
                                                 <th className="px-4 py-2 text-center">Status</th>
                                             </tr>
                                         </thead>
@@ -482,6 +464,9 @@ export const AdminDashboard: React.FC = () => {
                                                     </td>
                                                     <td className="px-4 py-2 text-gray-300">
                                                         {item.nama_siswa}
+                                                    </td>
+                                                    <td className="px-4 py-2 text-gray-400 text-xs italic">
+                                                        {item.nama_guru}
                                                     </td>
                                                     <td className="px-4 py-2 text-center">
                                                         <span className="text-xs font-bold text-red-400 border border-red-900/50 bg-red-900/20 px-2 py-1 rounded">

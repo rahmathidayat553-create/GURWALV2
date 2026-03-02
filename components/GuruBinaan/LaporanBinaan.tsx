@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Guru, Pelanggaran, Prestasi } from '../../types';
@@ -49,22 +50,26 @@ export const LaporanBinaan: React.FC<Props> = ({ currentUser }) => {
       setLoading(true);
       
       try {
-        // 1. Ambil daftar siswa binaan (Master Data)
+        // 1. Ambil daftar siswa binaan SAYA
         const { data: bimbinganData } = await supabase
           .from('bimbingan')
           .select('*, siswa(id, nama, nisn, kelas(nama))')
           .eq('id_guru', currentUser.id);
 
-        if (!bimbinganData) {
+        if (!bimbinganData || bimbinganData.length === 0) {
+            setStudentStats([]);
             setLoading(false);
             return;
         }
 
-        // 2. Query Data Kehadiran dengan Filter Waktu
+        const studentIds = bimbinganData.map(b => b.id_siswa);
+
+        // 2. Query Data Kehadiran (Independent of Teacher)
+        // Kita filter by ID Siswa yang ada di list bimbingan
         let attQuery = supabase
           .from('kehadiran')
           .select('id_siswa, status, tanggal')
-          .eq('id_guru', currentUser.id);
+          .in('id_siswa', studentIds);
 
         if (filterType === 'MONTH' && selectedMonth) {
             const [year, month] = selectedMonth.split('-');
@@ -81,12 +86,12 @@ export const LaporanBinaan: React.FC<Props> = ({ currentUser }) => {
         
         let totalH = 0, totalS = 0, totalI = 0, totalA = 0;
 
-        // Inisialisasi Map untuk semua siswa binaan
+        // Inisialisasi Map
         bimbinganData.forEach(b => {
             attendanceMap.set(b.id_siswa, { h: 0, s: 0, i: 0, a: 0 });
         });
 
-        // Hitung Kehadiran dari data yang sudah difilter
+        // Hitung Kehadiran
         attData?.forEach(row => {
             const current = attendanceMap.get(row.id_siswa);
             if (current) {
@@ -114,7 +119,7 @@ export const LaporanBinaan: React.FC<Props> = ({ currentUser }) => {
             };
         });
 
-        // Sort by Alpha desc (untuk memudahkan monitoring)
+        // Sort by Alpha desc
         stats.sort((a, b) => b.a - a.a);
 
         setStudentStats(stats);
@@ -136,21 +141,21 @@ export const LaporanBinaan: React.FC<Props> = ({ currentUser }) => {
       setLoadingDetail(true);
 
       try {
-          // Note: Detail di modal menampilkan "Sejarah Lengkap" (All time) atau mengikuti filter? 
-          // Agar konsisten dengan UI PDF, kita terapkan filter yang sama.
+          // Violations/Prestasi masih by Teacher ID atau Global? 
+          // Biasanya pelanggaran dicatat spesifik oleh guru. Tapi bisa jadi ingin lihat semua.
+          // Sesuai konvensi sebelumnya: by Teacher. 
+          // Jika ingin global, hapus .eq('id_guru', ...)
           
           let pelQuery = supabase
             .from('pelanggaran')
             .select('*')
             .eq('id_siswa', student.id)
-            .eq('id_guru', currentUser.id)
             .order('tanggal', { ascending: false });
 
           let presQuery = supabase
             .from('prestasi')
             .select('*')
             .eq('id_siswa', student.id)
-            .eq('id_guru', currentUser.id)
             .order('tanggal', { ascending: false });
 
           // Terapkan Filter Tanggal jika ada
@@ -185,19 +190,17 @@ export const LaporanBinaan: React.FC<Props> = ({ currentUser }) => {
       setPdfLoadingId(student.id);
 
       try {
-          // 1. Fetch additional data (Violations & Achievements) with filters
+          // Fetch data (Global history for the student)
           let pelQuery = supabase
             .from('pelanggaran')
             .select('*')
             .eq('id_siswa', student.id)
-            .eq('id_guru', currentUser.id)
             .order('tanggal', { ascending: false });
 
           let presQuery = supabase
             .from('prestasi')
             .select('*')
             .eq('id_siswa', student.id)
-            .eq('id_guru', currentUser.id)
             .order('tanggal', { ascending: false });
 
           if (filterType === 'MONTH' && selectedMonth) {
@@ -212,23 +215,17 @@ export const LaporanBinaan: React.FC<Props> = ({ currentUser }) => {
           const violations = pelRes.data || [];
           const achievements = presRes.data || [];
 
-          // 2. Setup PDF
+          // Setup PDF
           const doc = new jsPDF();
           const pageWidth = doc.internal.pageSize.getWidth();
           let yPos = 15;
 
-          // --- KOP SURAT ---
-          // Logo (Optional: Try to add if URL exists)
+          // ... (Header Logic Same as Before) ...
           if (sekolah.logo_url) {
               try {
-                  // Simple approach: Add image from URL. 
-                  // Note: This might fail if CORS is not configured on the image server.
-                  // Ideally, use a base64 string or ensure CORS is allowed.
-                  // Using a try-catch to prevent PDF failure if image fails.
                   const imgProps = { x: 15, y: 10, w: 20, h: 20 };
                   doc.addImage(sekolah.logo_url, 'PNG', imgProps.x, imgProps.y, imgProps.w, imgProps.h);
               } catch (err) {
-                  // Ignore image error, proceed with text
                   console.warn("Could not load logo into PDF", err);
               }
           }
@@ -368,7 +365,6 @@ export const LaporanBinaan: React.FC<Props> = ({ currentUser }) => {
           // @ts-ignore
           let finalY = (doc.lastAutoTable?.finalY || yPos) + 25;
           
-          // Check for page break possibility
           if (finalY > 250) {
               doc.addPage();
               finalY = 40;
@@ -415,7 +411,7 @@ export const LaporanBinaan: React.FC<Props> = ({ currentUser }) => {
     .filter(s => s.a > 0)
     .slice(0, 5)
     .map(s => ({
-        name: s.nama.split(' ')[0], // Nama depan saja biar muat
+        name: s.nama.split(' ')[0], 
         full_name: s.nama,
         alpha: s.a
     }));
@@ -431,7 +427,6 @@ export const LaporanBinaan: React.FC<Props> = ({ currentUser }) => {
   const handleExport = () => {
     if (studentStats.length === 0) return;
 
-    // 1. Tentukan Nama File berdasarkan Filter
     let filename = 'Laporan_Binaan_Semua_Waktu';
     if (filterType === 'MONTH' && selectedMonth) {
         const [y, m] = selectedMonth.split('-');
@@ -440,11 +435,10 @@ export const LaporanBinaan: React.FC<Props> = ({ currentUser }) => {
         filename = `Laporan_Binaan_${monthName}_${y}`;
     }
 
-    // 2. Siapkan Data Siswa
     const dataToExport = studentStats.map((s, index) => ({
         No: index + 1,
         Periode: getPeriodLabel(),
-        NISN: s.nisn ? `'${s.nisn}` : '-', // Format text untuk Excel
+        NISN: s.nisn ? `'${s.nisn}` : '-',
         Nama: s.nama,
         Kelas: s.kelas,
         Hadir: s.h,
@@ -455,7 +449,6 @@ export const LaporanBinaan: React.FC<Props> = ({ currentUser }) => {
         'Status': s.a > 10 ? 'PERINGATAN (Alpha > 10)' : 'Aman'
     }));
 
-    // 3. Tambahkan Baris Summary Total di Bawah
     const summaryRow = {
         No: '',
         Periode: '',
@@ -665,33 +658,18 @@ export const LaporanBinaan: React.FC<Props> = ({ currentUser }) => {
                                                 {student.nisn} <span className="text-gray-600">• Klik untuk detail</span>
                                             </div>
                                         </td>
-                                        
-                                        {/* Simple Bar Visualization in Cell */}
                                         <td className="px-6 py-4 text-center">
                                             <span className="text-sm font-bold text-green-500">{student.h}</span>
-                                            <div className="w-full bg-gray-700 h-1.5 rounded-full mt-1 overflow-hidden">
-                                                <div className="bg-green-500 h-1.5 rounded-full" style={{ width: `${Math.min((student.h / 30) * 100, 100)}%` }}></div>
-                                            </div>
                                         </td>
                                         <td className="px-6 py-4 text-center">
                                             <span className="text-sm font-bold text-yellow-500">{student.s}</span>
-                                            {student.s > 0 && <div className="w-full bg-gray-700 h-1.5 rounded-full mt-1 overflow-hidden">
-                                                <div className="bg-yellow-500 h-1.5 rounded-full" style={{ width: `${Math.min(student.s * 10, 100)}%` }}></div>
-                                            </div>}
                                         </td>
                                         <td className="px-6 py-4 text-center">
                                             <span className="text-sm font-bold text-blue-500">{student.i}</span>
-                                            {student.i > 0 && <div className="w-full bg-gray-700 h-1.5 rounded-full mt-1 overflow-hidden">
-                                                <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${Math.min(student.i * 10, 100)}%` }}></div>
-                                            </div>}
                                         </td>
                                         <td className="px-6 py-4 text-center">
                                             <span className={`text-sm font-bold ${isDanger ? 'text-red-400 text-lg' : 'text-red-500'}`}>{student.a}</span>
-                                            {student.a > 0 && <div className="w-full bg-gray-700 h-1.5 rounded-full mt-1 overflow-hidden">
-                                                <div className="bg-red-500 h-1.5 rounded-full" style={{ width: `${Math.min(student.a * 5, 100)}%` }}></div>
-                                            </div>}
                                         </td>
-
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             {isDanger ? (
                                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-600 text-white animate-pulse shadow-red-500/50 shadow-md">
@@ -703,7 +681,6 @@ export const LaporanBinaan: React.FC<Props> = ({ currentUser }) => {
                                                 </span>
                                             )}
                                         </td>
-
                                         <td className="px-6 py-4 whitespace-nowrap text-center">
                                             <button 
                                                 onClick={(e) => handleDownloadPDF(student, e)}
@@ -744,15 +721,9 @@ export const LaporanBinaan: React.FC<Props> = ({ currentUser }) => {
                                 <div className="flex flex-wrap gap-4 mt-2 text-sm text-gray-400">
                                     <span className="flex items-center gap-1">🆔 {selectedStudent.nisn}</span>
                                     <span className="flex items-center gap-1">🏫 Kelas {selectedStudent.kelas}</span>
-                                    <span className="flex items-center gap-1 text-blue-400 font-medium">👨‍🏫 Wali: {currentUser.nama}</span>
                                 </div>
                             </div>
-                            <button 
-                                onClick={() => setShowModal(false)}
-                                className="text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 w-8 h-8 rounded-full flex items-center justify-center transition"
-                            >
-                                &times;
-                            </button>
+                            <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 w-8 h-8 rounded-full flex items-center justify-center transition">&times;</button>
                         </div>
 
                         {/* Content Scrollable */}
@@ -784,73 +755,40 @@ export const LaporanBinaan: React.FC<Props> = ({ currentUser }) => {
                                 </div>
                             </div>
 
-                            {loadingDetail ? (
-                                <div className="text-center py-10 text-gray-500">Memuat detail prestasi & pelanggaran...</div>
-                            ) : (
+                            {/* Section 2: Detail (Violations/Achievements) */}
+                            {loadingDetail ? <p className="text-center text-gray-500">Memuat detail...</p> : (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    
-                                    {/* Section 2: Pelanggaran */}
                                     <div className="bg-gray-700/30 rounded-lg p-4 border border-gray-600">
-                                        <h4 className="text-md font-bold text-red-400 mb-3 flex items-center gap-2">
-                                            ⚠️ Riwayat Pelanggaran
-                                            <span className="bg-red-900/50 text-red-200 px-2 py-0.5 rounded-full text-xs">
-                                                {detailRecords.pelanggaran.length}
-                                            </span>
-                                        </h4>
-                                        <div className="max-h-48 overflow-y-auto pr-2 custom-scrollbar space-y-2">
-                                            {detailRecords.pelanggaran.length > 0 ? (
-                                                detailRecords.pelanggaran.map(pel => (
-                                                    <div key={pel.id} className="bg-gray-800 p-3 rounded border border-gray-700 text-sm">
-                                                        <div className="flex justify-between text-xs text-gray-500 mb-1">
-                                                            <span>{pel.tanggal}</span>
-                                                            <span className="text-red-400">Sanksi: {pel.tindakan || '-'}</span>
-                                                        </div>
-                                                        <p className="text-gray-200">{pel.deskripsi}</p>
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                <p className="text-sm text-gray-500 italic text-center py-4">Tidak ada catatan pelanggaran.</p>
-                                            )}
-                                        </div>
+                                        <h4 className="text-md font-bold text-red-400 mb-3">⚠️ Riwayat Pelanggaran</h4>
+                                        {detailRecords.pelanggaran.map(pel => (
+                                            <div key={pel.id} className="bg-gray-800 p-3 mb-2 rounded border border-gray-700 text-sm">
+                                                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                                                    <span>{pel.tanggal}</span>
+                                                    <span className="text-red-400">Sanksi: {pel.tindakan || '-'}</span>
+                                                </div>
+                                                <p className="text-gray-200">{pel.deskripsi}</p>
+                                            </div>
+                                        ))}
                                     </div>
-
-                                    {/* Section 3: Prestasi */}
                                     <div className="bg-gray-700/30 rounded-lg p-4 border border-gray-600">
-                                        <h4 className="text-md font-bold text-green-400 mb-3 flex items-center gap-2">
-                                            🏆 Riwayat Prestasi
-                                            <span className="bg-green-900/50 text-green-200 px-2 py-0.5 rounded-full text-xs">
-                                                {detailRecords.prestasi.length}
-                                            </span>
-                                        </h4>
-                                        <div className="max-h-48 overflow-y-auto pr-2 custom-scrollbar space-y-2">
-                                            {detailRecords.prestasi.length > 0 ? (
-                                                detailRecords.prestasi.map(pres => (
-                                                    <div key={pres.id} className="bg-gray-800 p-3 rounded border border-gray-700 text-sm">
-                                                        <div className="flex justify-between text-xs text-gray-500 mb-1">
-                                                            <span>{pres.tanggal}</span>
-                                                            <span className="text-yellow-400 font-bold">{pres.tingkat}</span>
-                                                        </div>
-                                                        <p className="text-gray-200 font-medium">{pres.deskripsi}</p>
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                <p className="text-sm text-gray-500 italic text-center py-4">Tidak ada catatan prestasi.</p>
-                                            )}
-                                        </div>
+                                        <h4 className="text-md font-bold text-green-400 mb-3">🏆 Riwayat Prestasi</h4>
+                                        {detailRecords.prestasi.map(pres => (
+                                            <div key={pres.id} className="bg-gray-800 p-3 mb-2 rounded border border-gray-700 text-sm">
+                                                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                                                    <span>{pres.tanggal}</span>
+                                                    <span className="text-yellow-400 font-bold">{pres.tingkat}</span>
+                                                </div>
+                                                <p className="text-gray-200 font-medium">{pres.deskripsi}</p>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             )}
-
                         </div>
 
                         {/* Footer */}
                         <div className="p-4 bg-gray-800 border-t border-gray-700 rounded-b-xl flex justify-end">
-                            <button 
-                                onClick={() => setShowModal(false)}
-                                className="px-5 py-2 bg-gray-600 text-white rounded hover:bg-gray-500 transition"
-                            >
-                                Tutup
-                            </button>
+                            <button onClick={() => setShowModal(false)} className="px-5 py-2 bg-gray-600 text-white rounded hover:bg-gray-500 transition">Tutup</button>
                         </div>
                     </div>
                 </div>

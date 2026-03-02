@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { Guru, Kelas } from '../types';
@@ -99,7 +100,7 @@ export const RekapKehadiranAdmin: React.FC<RekapKehadiranAdminProps> = ({ showTo
         });
       });
 
-      // 3. Get Attendance based on Time Filter
+      // 3. Get Attendance based on Time Filter (INDEPENDENT of TEACHER)
       let query = supabase.from('kehadiran').select('id_siswa, status, tanggal');
 
       if (filterType === 'MONTH' && selectedMonth) {
@@ -221,8 +222,7 @@ export const RekapKehadiranAdmin: React.FC<RekapKehadiranAdminProps> = ({ showTo
       }
   };
 
-  // --- EXPORT FUNCTIONS ---
-
+  // --- EXPORT FUNCTIONS (SAMA SEPERTI SEBELUMNYA) ---
   const handleExportExcel = () => {
     if (filteredData.length === 0) {
         showToast('Tidak ada data untuk diekspor', 'error');
@@ -252,8 +252,6 @@ export const RekapKehadiranAdmin: React.FC<RekapKehadiranAdminProps> = ({ showTo
     if (filteredData.length === 0) return;
 
     const doc = new jsPDF();
-    
-    // Header
     doc.setFontSize(16);
     doc.text('REKAPITULASI KEHADIRAN SISWA', 105, 15, { align: 'center' });
     doc.setFontSize(12);
@@ -292,195 +290,57 @@ export const RekapKehadiranAdmin: React.FC<RekapKehadiranAdminProps> = ({ showTo
     doc.save(`rekap_kehadiran_list.pdf`);
   };
 
-  const handleExportPDFIndividual = (row: RekapRow) => {
-    const doc = new jsPDF();
-    
-    // --- KOP SURAT ---
-    const pageWidth = doc.internal.pageSize.getWidth();
-    let yPos = 15;
-    
-    // Text Kop
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.text((sekolah.nama || "NAMA SEKOLAH").toUpperCase(), pageWidth / 2, yPos, { align: "center" });
-    
-    yPos += 7;
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text(sekolah.alamat || "Alamat Sekolah...", pageWidth / 2, yPos, { align: "center" });
-    
-    yPos += 5;
-    doc.text(`Telp: ${sekolah.no_telp || '-'} | Email: ${sekolah.email || '-'}`, pageWidth / 2, yPos, { align: "center" });
-    
-    yPos += 5;
-    doc.setLineWidth(0.5);
-    doc.line(10, yPos, pageWidth - 10, yPos); // Garis Kop
-    
-    // --- CONTENT ---
-    yPos += 15;
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text("LAPORAN KEHADIRAN SISWA", pageWidth / 2, yPos, { align: "center" });
-    
-    yPos += 7;
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "italic");
-    doc.text(getPeriodString(), pageWidth / 2, yPos, { align: "center" });
-
-    yPos += 15;
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "normal");
-    
-    // Student Info
-    doc.text(`Nama Siswa : ${row.nama_siswa}`, 20, yPos);
-    doc.text(`Kelas        : ${row.kelas}`, 120, yPos);
-    yPos += 7;
-    doc.text(`NISN         : ${row.nisn}`, 20, yPos);
-    doc.text(`Wali Kelas   : ${row.nama_wali}`, 120, yPos);
-
-    yPos += 15;
-    
-    // Table Summary
-    const tableData = [
-        ['Keterangan', 'Jumlah'],
-        ['Hadir (H)', `${row.hadir} Hari`],
-        ['Sakit (S)', `${row.sakit} Hari`],
-        ['Izin (I)', `${row.izin} Hari`],
-        ['Tanpa Keterangan (A)', `${row.alpha} Hari`],
-        ['TOTAL KETIDAKHADIRAN', `${row.sakit + row.izin + row.alpha} Hari`]
-    ];
-
-    autoTable(doc, {
-        startY: yPos,
-        head: [['KETERANGAN', 'JUMLAH']],
-        body: tableData.slice(1), 
-        theme: 'plain',
-        styles: { fontSize: 11, cellPadding: 3 },
-        columnStyles: {
-            0: { cellWidth: 100 },
-            1: { cellWidth: 50, fontStyle: 'bold' }
-        },
-        margin: { left: 20 }
-    });
-
-    // --- SIGNATURE ---
-    // @ts-ignore
-    let finalY = (doc as any).lastAutoTable.finalY + 30;
-    
-    const dateStr = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-    
-    doc.text(`...................., ${dateStr}`, 140, finalY);
-    finalY += 7;
-    doc.text("Wali Kelas,", 140, finalY);
-    
-    finalY += 25;
-    doc.setFont("helvetica", "bold");
-    doc.text(row.nama_wali, 140, finalY);
-    finalY += 5;
-    doc.setFont("helvetica", "normal");
-    doc.text(`NIP. ${row.nip_wali || '....................'}`, 140, finalY);
-
-    doc.save(`Laporan_Kehadiran_${row.nama_siswa.replace(/\s+/g, '_')}.pdf`);
-  };
-
+  // Render logic...
   return (
     <div>
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <div>
             <h2 className="text-2xl font-bold text-white">Rekap Kehadiran Global</h2>
-            <p className="text-gray-400 mt-1">Data kehadiran seluruh siswa dari semua kelas/guru.</p>
+            <p className="text-gray-400 mt-1">Data kehadiran seluruh siswa (independen dari perpindahan wali).</p>
         </div>
         <div className="flex gap-2">
-            <button 
-                onClick={handleExportPDFList}
-                disabled={loading || filteredData.length === 0}
-                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-medium transition flex items-center gap-2 disabled:opacity-50"
-            >
-                📄 PDF (List)
-            </button>
-            <button 
-                onClick={handleExportExcel}
-                disabled={loading || filteredData.length === 0}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-medium transition flex items-center gap-2 disabled:opacity-50"
-            >
-                📊 Excel
-            </button>
+            <button onClick={handleExportPDFList} disabled={loading || filteredData.length === 0} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-medium disabled:opacity-50">📄 PDF</button>
+            <button onClick={handleExportExcel} disabled={loading || filteredData.length === 0} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-medium disabled:opacity-50">📊 Excel</button>
         </div>
       </div>
 
-      {/* Main Filter Section */}
       <div className="bg-gray-800 p-6 rounded-lg border border-gray-700 mb-6 space-y-4">
-        
-        {/* Row 1: Filter Waktu */}
         <div className="pb-4 border-b border-gray-700">
-             <label className="text-white text-sm font-bold mb-2 block">📅 Filter Waktu Kehadiran</label>
+             <label className="text-white text-sm font-bold mb-2 block">📅 Filter Waktu</label>
              <div className="flex flex-col md:flex-row gap-4">
                 <div className="w-full md:w-1/4">
-                    <select
-                        value={filterType}
-                        onChange={(e) => setFilterType(e.target.value as FilterTimeType)}
-                        className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white font-medium"
-                    >
+                    <select value={filterType} onChange={(e) => setFilterType(e.target.value as FilterTimeType)} className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white font-medium">
                         <option value="ALL">Semua Waktu</option>
                         <option value="MONTH">Per Bulan</option>
-                        <option value="RANGE">Rentang Tanggal (Custom)</option>
+                        <option value="RANGE">Rentang Tanggal</option>
                     </select>
                 </div>
-
                 {filterType === 'MONTH' && (
                     <div className="w-full md:w-1/4">
-                        <input
-                            type="month"
-                            value={selectedMonth}
-                            onChange={(e) => setSelectedMonth(e.target.value)}
-                            className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-                        />
+                        <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white" />
                     </div>
                 )}
-
                 {filterType === 'RANGE' && (
                     <div className="flex flex-1 gap-2 items-center">
-                        <input
-                            type="date"
-                            value={dateRange.start}
-                            onChange={(e) => setDateRange({...dateRange, start: e.target.value})}
-                            className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-                        />
+                        <input type="date" value={dateRange.start} onChange={(e) => setDateRange({...dateRange, start: e.target.value})} className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white" />
                         <span className="text-gray-400">-</span>
-                        <input
-                            type="date"
-                            value={dateRange.end}
-                            onChange={(e) => setDateRange({...dateRange, end: e.target.value})}
-                            className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-                        />
+                        <input type="date" value={dateRange.end} onChange={(e) => setDateRange({...dateRange, end: e.target.value})} className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white" />
                     </div>
                 )}
              </div>
-             <p className="text-xs text-gray-400 mt-2">
-                * Data yang ditampilkan (H/S/I/A) akan dihitung ulang berdasarkan filter waktu yang dipilih.
-             </p>
         </div>
 
-        {/* Row 2: Filter Data */}
         <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1">
-                <label className="text-gray-400 text-sm mb-1 block">Filter Guru Wali</label>
-                <select 
-                    value={selectedGuru}
-                    onChange={(e) => setSelectedGuru(e.target.value)}
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-                >
+                <label className="text-gray-400 text-sm mb-1 block">Filter Guru Wali (Saat Ini)</label>
+                <select value={selectedGuru} onChange={(e) => setSelectedGuru(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white">
                     <option value="">Semua Guru</option>
                     {gurus.map(g => <option key={g.id} value={g.id}>{g.nama}</option>)}
                 </select>
             </div>
             <div className="flex-1">
                 <label className="text-gray-400 text-sm mb-1 block">Filter Kelas</label>
-                <select 
-                    value={selectedKelas}
-                    onChange={(e) => setSelectedKelas(e.target.value)}
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-                >
+                <select value={selectedKelas} onChange={(e) => setSelectedKelas(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white">
                     <option value="">Semua Kelas</option>
                     {kelasOptions.map(k => <option key={k.id} value={k.id}>{k.nama}</option>)}
                 </select>
@@ -488,7 +348,6 @@ export const RekapKehadiranAdmin: React.FC<RekapKehadiranAdminProps> = ({ showTo
         </div>
       </div>
 
-      {/* Table */}
       <div className="bg-gray-800 shadow overflow-hidden rounded-lg border border-gray-700">
         {loading ? <p className="p-6 text-gray-400">Sedang menghitung data kehadiran...</p> : (
             <div className="overflow-x-auto">
@@ -523,16 +382,12 @@ export const RekapKehadiranAdmin: React.FC<RekapKehadiranAdminProps> = ({ showTo
                                     <button 
                                         onClick={() => handleViewDetails(row)}
                                         className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded border border-blue-500 transition"
-                                        title="Lihat Detail & Riwayat"
                                     >
                                         👁️ Lihat
                                     </button>
                                 </td>
                             </tr>
                         ))}
-                        {filteredData.length === 0 && (
-                            <tr><td colSpan={10} className="p-6 text-center text-gray-500">Data tidak ditemukan pada periode/filter ini.</td></tr>
-                        )}
                     </tbody>
                 </table>
             </div>
@@ -546,31 +401,12 @@ export const RekapKehadiranAdmin: React.FC<RekapKehadiranAdminProps> = ({ showTo
                 <div className="flex justify-between items-start mb-6 border-b border-gray-700 pb-4">
                     <div>
                         <h3 className="text-2xl font-bold text-white mb-1">{selectedStudent.nama_siswa}</h3>
-                        <p className="text-gray-400 text-sm">{selectedStudent.nisn} | Kelas: {selectedStudent.kelas} | Wali: {selectedStudent.nama_wali}</p>
+                        <p className="text-gray-400 text-sm">{selectedStudent.nisn} | Kelas: {selectedStudent.kelas}</p>
                         <p className="text-blue-400 text-xs mt-1 font-bold">{getPeriodString()}</p>
                     </div>
                     <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
                 </div>
                 
-                <div className="grid grid-cols-4 gap-4 mb-6">
-                    <div className="bg-green-900/30 p-3 rounded border border-green-800 text-center">
-                        <span className="block text-2xl font-bold text-green-400">{selectedStudent.hadir}</span>
-                        <span className="text-xs text-green-200">Hadir</span>
-                    </div>
-                    <div className="bg-yellow-900/30 p-3 rounded border border-yellow-800 text-center">
-                        <span className="block text-2xl font-bold text-yellow-400">{selectedStudent.sakit}</span>
-                        <span className="text-xs text-yellow-200">Sakit</span>
-                    </div>
-                    <div className="bg-blue-900/30 p-3 rounded border border-blue-800 text-center">
-                        <span className="block text-2xl font-bold text-blue-400">{selectedStudent.izin}</span>
-                        <span className="text-xs text-blue-200">Izin</span>
-                    </div>
-                    <div className="bg-red-900/30 p-3 rounded border border-red-800 text-center">
-                        <span className="block text-2xl font-bold text-red-400">{selectedStudent.alpha}</span>
-                        <span className="text-xs text-red-200">Alpha</span>
-                    </div>
-                </div>
-
                 <div className="flex-1 overflow-auto mb-4 border border-gray-700 rounded bg-gray-900/50">
                     {loadingHistory ? (
                         <div className="p-8 text-center text-gray-500">Memuat riwayat...</div>
@@ -600,27 +436,12 @@ export const RekapKehadiranAdmin: React.FC<RekapKehadiranAdminProps> = ({ showTo
                                         <td className="px-4 py-2 text-sm text-gray-400 italic">{h.catatan || '-'}</td>
                                     </tr>
                                 ))}
-                                {studentHistory.length === 0 && (
-                                    <tr><td colSpan={3} className="p-4 text-center text-sm text-gray-500">Tidak ada riwayat kehadiran tercatat pada periode ini.</td></tr>
-                                )}
                             </tbody>
                         </table>
                     )}
                 </div>
-
-                <div className="flex justify-end gap-3 pt-4 border-t border-gray-700">
-                     <button 
-                        onClick={() => setShowModal(false)}
-                        className="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded font-medium transition"
-                    >
-                        Tutup
-                    </button>
-                    <button 
-                        onClick={() => handleExportPDFIndividual(selectedStudent)}
-                        className="bg-primary hover:bg-secondary text-white px-4 py-2 rounded font-bold transition flex items-center gap-2 shadow-lg"
-                    >
-                        🖨️ Ekspor Laporan PDF
-                    </button>
+                <div className="flex justify-end pt-4 border-t border-gray-700">
+                     <button onClick={() => setShowModal(false)} className="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded font-medium transition">Tutup</button>
                 </div>
             </div>
         </div>

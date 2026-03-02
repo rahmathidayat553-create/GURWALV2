@@ -55,7 +55,7 @@ export const KehadiranBinaan: React.FC<Props> = ({ currentUser, showToast }) => 
     const fetchInitialData = async () => {
       setLoading(true);
       
-      // Fetch Siswa
+      // Fetch Siswa Binaan Saya
       const siswaPromise = supabase
         .from('bimbingan')
         .select('*, siswa(id, nama, nisn, jenis_kelamin, kelas(nama))')
@@ -134,13 +134,16 @@ export const KehadiranBinaan: React.FC<Props> = ({ currentUser, showToast }) => 
           }
       }
 
-      // Parallel Request: Cek Kehadiran & Cek Kalender Pendidikan
+      // --- FETCH KEHADIRAN (INDEPENDEN DARI GURU) ---
+      // Ambil ID siswa binaan saya
+      const studentIds = siswaList.map(s => s.id_siswa);
+
       const queries: any[] = [
         supabase
           .from('kehadiran')
           .select('*')
-          .eq('id_guru', currentUser.id)
-          .eq('tanggal', tanggal)
+          .in('id_siswa', studentIds) // Filter by Siswa IDs
+          .eq('tanggal', tanggal)     // Filter by Tanggal
       ];
 
       const shouldCheckCalendar = tanggal <= todayStr && !isWeekend;
@@ -187,7 +190,6 @@ export const KehadiranBinaan: React.FC<Props> = ({ currentUser, showToast }) => 
           } else {
             const defaultPoint = { status: 'HADIR' as const, catatan: '' };
             newFormState[item.id_siswa] = defaultPoint;
-            // Original state kosong untuk siswa ini karena tidak ada di DB
           }
         });
       } else {
@@ -227,7 +229,8 @@ export const KehadiranBinaan: React.FC<Props> = ({ currentUser, showToast }) => 
     }));
   };
 
-  const handleSave = async () => {
+  // UNIFIED SAVE/UPDATE using UPSERT
+  const handleSaveOrUpdate = async () => {
     if (isHoliday) {
         showToast(`Gagal: ${holidayInfo?.keterangan || 'Hari Libur / Masa Depan'}.`, 'error');
         return;
@@ -236,52 +239,25 @@ export const KehadiranBinaan: React.FC<Props> = ({ currentUser, showToast }) => 
     setProcessing(true);
     try {
       const payload = siswaList.map(item => ({
-        id_guru: currentUser.id,
+        id_guru: currentUser.id, // Metadata: Siapa yang terakhir edit
         id_siswa: item.id_siswa,
         tanggal: tanggal,
         status: formData[item.id_siswa].status,
         catatan: formData[item.id_siswa].catatan
       }));
 
-      const { error } = await supabase.from('kehadiran').insert(payload);
+      // KUNCI: Upsert berdasarkan (id_siswa, tanggal)
+      const { error } = await supabase
+        .from('kehadiran')
+        .upsert(payload, { onConflict: 'id_siswa,tanggal' });
+
       if (error) throw error;
 
       showToast('✅ Kehadiran berhasil disimpan', 'success');
       await fetchDataAndCheckHoliday();
-    } catch (e) {
-      showToast('Gagal menyimpan data', 'error');
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleUpdate = async () => {
-    if (isHoliday) {
-        showToast(`Gagal: ${holidayInfo?.keterangan || 'Hari Libur / Masa Depan'}.`, 'error');
-        return;
-    }
-
-    setProcessing(true);
-    try {
-      const payload = siswaList.map(item => {
-        const form = formData[item.id_siswa];
-        return {
-          id: form.id,
-          id_guru: currentUser.id,
-          id_siswa: item.id_siswa,
-          tanggal: tanggal,
-          status: form.status,
-          catatan: form.catatan
-        };
-      });
-
-      const { error } = await supabase.from('kehadiran').upsert(payload);
-      if (error) throw error;
-
-      showToast('✅ Kehadiran berhasil diperbarui', 'success');
-      await fetchDataAndCheckHoliday();
-    } catch (e) {
-      showToast('Gagal memperbarui data', 'error');
+    } catch (e: any) {
+      console.error(e);
+      showToast('Gagal menyimpan data: ' + e.message, 'error');
     } finally {
       setProcessing(false);
     }
@@ -295,10 +271,13 @@ export const KehadiranBinaan: React.FC<Props> = ({ currentUser, showToast }) => 
 
     setProcessing(true);
     try {
+      // Hapus data berdasarkan ID Siswa & Tanggal (Bukan ID Guru)
+      const studentIds = siswaList.map(s => s.id_siswa);
+      
       const { error } = await supabase
         .from('kehadiran')
         .delete()
-        .eq('id_guru', currentUser.id)
+        .in('id_siswa', studentIds)
         .eq('tanggal', tanggal);
 
       if (error) throw error;
@@ -420,7 +399,7 @@ export const KehadiranBinaan: React.FC<Props> = ({ currentUser, showToast }) => 
             <div className="flex gap-2 w-full lg:w-auto justify-end">
                 {mode === 'INPUT' && (
                 <button
-                    onClick={handleSave}
+                    onClick={handleSaveOrUpdate}
                     disabled={processing || siswaList.length === 0 || isHoliday}
                     className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-bold shadow-lg transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -458,11 +437,11 @@ export const KehadiranBinaan: React.FC<Props> = ({ currentUser, showToast }) => 
                         ❌ Batal
                     </button>
                     <button
-                        onClick={handleUpdate}
+                        onClick={handleSaveOrUpdate}
                         disabled={processing || isHoliday}
                         className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-bold shadow-lg transition flex items-center gap-2 disabled:opacity-50"
                     >
-                        {processing ? 'Memproses...' : '✅ Perbarui Kehadiran'}
+                        {processing ? 'Memproses...' : '✅ Simpan Perubahan'}
                     </button>
                 </>
                 )}
