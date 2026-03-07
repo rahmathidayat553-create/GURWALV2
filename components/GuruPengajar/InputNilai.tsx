@@ -19,6 +19,9 @@ export const InputNilai: React.FC<Props> = ({ currentUser, showToast }) => {
 
   // --- STATE DATA MASTER ---
   const [allPengajaran, setAllPengajaran] = useState<Pengajaran[]>([]);
+  const [inputtedGrades, setInputtedGrades] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<{kelas: string, mapel: string, jenis: string, materi: string} | null>(null);
   
   // --- STATE SELECTION ---
   const [selectedKelas, setSelectedKelas] = useState<string>('');
@@ -33,20 +36,73 @@ export const InputNilai: React.FC<Props> = ({ currentUser, showToast }) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // 1. Load Data Pengajaran (Sekali saat mount)
+  // 1. Load Data Pengajaran & History (Sekali saat mount)
   useEffect(() => {
-    const fetchAssignments = async () => {
-      const { data, error } = await supabase
+    const fetchInitial = async () => {
+      setLoadingHistory(true);
+      const { data: assignments } = await supabase
         .from('pengajaran')
         .select('*, kelas(*), mapel(*)')
         .eq('id_guru', currentUser.id);
 
-      if (!error && data) {
-        setAllPengajaran(data as unknown as Pengajaran[]);
+      if (assignments) {
+        setAllPengajaran(assignments as unknown as Pengajaran[]);
       }
+
+      await fetchInputtedGrades();
+      setLoadingHistory(false);
     };
-    fetchAssignments();
+    fetchInitial();
   }, [currentUser.id]);
+
+  const fetchInputtedGrades = async () => {
+    // Ambil data unik dari tabel nilai untuk guru ini
+    // Kita butuh: id_kelas (via siswa), id_mapel, jenis, materi
+    // Karena id_kelas ada di tabel siswa, kita join
+    const { data, error } = await supabase
+      .from('nilai')
+      .select(`
+        id_mapel, 
+        jenis, 
+        materi,
+        mapel:id_mapel(nama),
+        siswa:id_siswa(id_kelas, kelas:id_kelas(nama))
+      `)
+      .eq('id_guru', currentUser.id);
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    // Grouping untuk mendapatkan list unik
+    const uniqueMap = new Map<string, any>();
+    data?.forEach((item: any) => {
+      const kelasId = item.siswa?.id_kelas;
+      const kelasNama = item.siswa?.kelas?.nama;
+      const mapelId = item.id_mapel;
+      const mapelNama = item.mapel?.nama;
+      const jenis = item.jenis;
+      const materi = item.materi || '';
+
+      const key = `${kelasId}-${mapelId}-${jenis}-${materi}`;
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, {
+          kelasId,
+          kelasNama,
+          mapelId,
+          mapelNama,
+          jenis,
+          materi,
+          count: 1
+        });
+      } else {
+        uniqueMap.get(key).count += 1;
+      }
+    });
+
+    setInputtedGrades(Array.from(uniqueMap.values()));
+  };
 
   // --- DERIVED OPTIONS (Filter dropdown berdasarkan step sebelumnya) ---
   
@@ -116,10 +172,8 @@ export const InputNilai: React.FC<Props> = ({ currentUser, showToast }) => {
           if (!studentsData) throw new Error("Gagal memuat siswa");
           setStudents(studentsData);
 
-          // 2. Ambil Nilai Existing (Sesuai Kelas, Mapel, Jenis)
-          // Kita tidak filter by Materi di query select agar jika guru mengedit materi,
-          // nilai lama tetap muncul. Materi akan diupdate saat simpan.
-          const { data: gradesData } = await supabase
+          // 2. Ambil Nilai Existing (Sesuai Kelas, Mapel, Jenis, Materi)
+          let query = supabase
             .from('nilai')
             .select('*')
             .eq('id_guru', currentUser.id)
@@ -127,26 +181,25 @@ export const InputNilai: React.FC<Props> = ({ currentUser, showToast }) => {
             .eq('jenis', selectedJenis)
             .in('id_siswa', studentsData.map(s => s.id));
 
+          if (inputMateri) {
+            query = query.eq('materi', inputMateri);
+          } else {
+            query = query.is('materi', null);
+          }
+
+          const { data: gradesData } = await query;
+
           // 3. Map ke Local State
           const initialGrades: LocalGradeState = {};
           
-          // Jika ada data nilai, kita ambil juga materinya untuk pre-fill inputMateri jika masih kosong
-          let foundMateri = '';
-
           studentsData.forEach(s => {
               const record = gradesData?.find(g => g.id_siswa === s.id);
               if (record) {
                   initialGrades[s.id] = String(record.nilai);
-                  if (record.materi && !foundMateri) foundMateri = record.materi;
               } else {
                   initialGrades[s.id] = '';
               }
           });
-
-          // Jika user belum isi materi, tapi di DB sudah ada materi untuk jenis penilaian ini, gunakan dari DB
-          if (!inputMateri && foundMateri) {
-              setInputMateri(foundMateri);
-          }
 
           setLocalGrades(initialGrades);
           setStep(5); // Pindah ke tabel
@@ -170,56 +223,45 @@ export const InputNilai: React.FC<Props> = ({ currentUser, showToast }) => {
   const handleSaveAll = async () => {
       setSaving(true);
       try {
-          const payload = [];
+          // ... existing logic ...
+          // (I will keep the existing logic but wrap it better if needed)
+          // Actually, the existing logic is quite verbose with per-student queries.
+          // Let's optimize it slightly to use a bulk approach if possible, 
+          // but for now, I'll just ensure fetchInputtedGrades is called after.
+          
           const today = new Date().toISOString().split('T')[0];
 
           for (const student of students) {
               const valStr = localGrades[student.id];
-              
-              // Skip jika kosong (atau simpan null? Tergantung kebutuhan. Di sini kita simpan jika ada angka)
-              // Jika ingin menghapus nilai, user isi 0 atau kita perlu logika delete. 
-              // Sederhananya: Upsert nilai. Jika string kosong, kita anggap null.
-              
               const numVal = valStr === '' ? null : parseFloat(valStr);
               
-              // Validasi range
               if (numVal !== null && (numVal < 0 || numVal > 100)) {
                   throw new Error(`Nilai untuk ${student.nama} tidak valid (0-100)`);
               }
 
-              // Kita perlu cek ID record lama untuk update, atau biarkan Supabase handle conflict
-              // Sayangnya tabel nilai mungkin tidak punya unique constraint (id_siswa, id_mapel, jenis).
-              // Mari kita cek dulu apakah record sudah ada untuk update spesifik ID-nya.
-              
-              // Strategi: Cari record lama di client side (kita punya 'gradesData' tadi tapi tidak disimpan di state global,
-              // jadi kita query ulang atau percaya pada logic Upsert/Delete-Insert).
-              
-              // Paling aman untuk mencegah duplikat tanpa unique constraint DB:
-              // 1. Hapus nilai lama (id_guru, id_siswa, id_mapel, jenis)
-              // 2. Insert baru
-              // ATAU Gunakan 'upsert' jika kita yakin tabel punya constraint/index unique. 
-              
-              // Asumsi: Tabel 'nilai' sebaiknya punya unique constraint pada (id_siswa, id_mapel, jenis).
-              // Jika belum ada, query manual select id -> update/insert adalah cara aman.
-              
-              // Untuk performa UI React ini, kita lakukan query per siswa di dalam loop mungkin lambat.
-              // Lebih baik: Hapus semua nilai tipe ini untuk kelas ini, lalu insert ulang? Riskan.
-              
-              // PENDEKATAN AMAN: Cek satu per satu (Upsert logic manual)
-              const { data: existing } = await supabase
+              let query = supabase
                 .from('nilai')
                 .select('id')
                 .eq('id_guru', currentUser.id)
                 .eq('id_siswa', student.id)
                 .eq('id_mapel', selectedMapel)
-                .eq('jenis', selectedJenis)
-                .maybeSingle();
+                .eq('jenis', selectedJenis);
+
+              if (inputMateri) {
+                query = query.eq('materi', inputMateri);
+              } else {
+                query = query.is('materi', null);
+              }
+
+              const { data: existing } = await query.maybeSingle();
+
+              const materiToSave = inputMateri || null;
 
               if (numVal !== null) {
                   if (existing) {
                       await supabase.from('nilai').update({
                           nilai: numVal,
-                          materi: inputMateri,
+                          materi: materiToSave,
                           tanggal: today
                       }).eq('id', existing.id);
                   } else {
@@ -229,12 +271,11 @@ export const InputNilai: React.FC<Props> = ({ currentUser, showToast }) => {
                           id_mapel: selectedMapel,
                           jenis: selectedJenis,
                           nilai: numVal,
-                          materi: inputMateri,
+                          materi: materiToSave,
                           tanggal: today
                       }]);
                   }
               } else {
-                  // Jika nilai dikosongkan user, hapus dari DB jika ada
                   if (existing) {
                       await supabase.from('nilai').delete().eq('id', existing.id);
                   }
@@ -242,7 +283,7 @@ export const InputNilai: React.FC<Props> = ({ currentUser, showToast }) => {
           }
 
           showToast('✅ Semua nilai berhasil disimpan!', 'success');
-          // Kembali ke dashboard atau reset? User mungkin mau edit lagi. Biarkan di step 5.
+          await fetchInputtedGrades();
       } catch (error: any) {
           console.error(error);
           showToast(error.message || 'Gagal menyimpan nilai', 'error');
@@ -251,35 +292,235 @@ export const InputNilai: React.FC<Props> = ({ currentUser, showToast }) => {
       }
   };
 
+  const handleEditHistory = (item: any) => {
+    setSelectedKelas(item.kelasId);
+    setSelectedMapel(item.mapelId);
+    setSelectedJenis(item.jenis);
+    setInputMateri(item.materi);
+    
+    // Langsung fetch data siswa & nilai untuk step 5
+    // Kita butuh fetchStudentsAndGrades tapi dengan parameter atau state yang sudah diupdate
+    // Karena setState async, kita panggil fetch manual dengan data item
+    fetchStudentsAndGradesManual(item.kelasId, item.mapelId, item.jenis, item.materi);
+  };
+
+  const fetchStudentsAndGradesManual = async (kelasId: string, mapelId: string, jenis: string, materi: string) => {
+    setLoading(true);
+    try {
+        const { data: studentsData } = await supabase
+          .from('siswa')
+          .select('*')
+          .eq('id_kelas', kelasId)
+          .order('nama');
+        
+        if (!studentsData) throw new Error("Gagal memuat siswa");
+        setStudents(studentsData);
+
+        let query = supabase
+          .from('nilai')
+          .select('*')
+          .eq('id_guru', currentUser.id)
+          .eq('id_mapel', mapelId)
+          .eq('jenis', jenis)
+          .in('id_siswa', studentsData.map(s => s.id));
+
+        if (materi) {
+          query = query.eq('materi', materi);
+        } else {
+          query = query.is('materi', null);
+        }
+
+        const { data: gradesData } = await query;
+
+        const initialGrades: LocalGradeState = {};
+        studentsData.forEach(s => {
+            const record = gradesData?.find(g => g.id_siswa === s.id);
+            initialGrades[s.id] = record ? String(record.nilai) : '';
+        });
+
+        setLocalGrades(initialGrades);
+        setStep(5);
+    } catch (error) {
+        showToast('Gagal memuat data.', 'error');
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  const handleDeleteHistory = async () => {
+    if (!showDeleteConfirm) return;
+    const { kelasId, mapelId, jenis, materi } = showDeleteConfirm as any;
+    
+    setLoadingHistory(true);
+    try {
+      // Kita harus hapus nilai berdasarkan kriteria ini
+      // Karena id_kelas tidak ada di tabel nilai, kita harus cari id_siswa dulu
+      const { data: studentsInClass } = await supabase
+        .from('siswa')
+        .select('id')
+        .eq('id_kelas', kelasId);
+      
+      if (studentsInClass && studentsInClass.length > 0) {
+        const studentIds = studentsInClass.map(s => s.id);
+        
+        let query = supabase
+          .from('nilai')
+          .delete()
+          .eq('id_guru', currentUser.id)
+          .eq('id_mapel', mapelId)
+          .eq('jenis', jenis)
+          .in('id_siswa', studentIds);
+
+        if (materi) {
+          query = query.eq('materi', materi);
+        } else {
+          query = query.is('materi', null);
+        }
+
+        const { error } = await query;
+
+        if (error) throw error;
+        showToast('✅ Daftar nilai berhasil dihapus', 'success');
+        await fetchInputtedGrades();
+      }
+    } catch (error) {
+      showToast('Gagal menghapus data', 'error');
+    } finally {
+      setLoadingHistory(false);
+      setShowDeleteConfirm(null);
+    }
+  };
+
   // --- RENDER STEPS ---
 
   // STEP 1: PILIH KELAS
   if (step === 1) {
       return (
-          <div className="max-w-2xl mx-auto mt-10">
-              <h2 className="text-2xl font-bold text-white mb-6 text-center">Langkah 1: Pilih Kelas</h2>
-              <div className="bg-gray-800 p-8 rounded-xl border border-gray-700 shadow-lg">
-                  <label className="block text-gray-400 mb-2 font-medium">Daftar Kelas Ajar Anda</label>
-                  <select 
-                    value={selectedKelas}
-                    onChange={(e) => setSelectedKelas(e.target.value)}
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-white text-lg focus:ring-2 focus:ring-primary focus:border-transparent transition"
-                  >
-                      <option value="">-- Pilih Kelas --</option>
-                      {kelasOptions.map((k) => (
-                          <option key={k.id} value={k.id}>{k.nama}</option>
-                      ))}
-                  </select>
-                  
-                  <div className="mt-8 flex justify-end">
-                      <button 
-                        onClick={handleNextStep}
-                        className="bg-primary hover:bg-secondary text-white px-8 py-3 rounded-lg font-bold shadow-lg transition transform hover:scale-105"
+          <div className="max-w-4xl mx-auto mt-10 space-y-10">
+              <div className="max-w-2xl mx-auto">
+                  <h2 className="text-2xl font-bold text-white mb-6 text-center">Langkah 1: Pilih Kelas</h2>
+                  <div className="bg-gray-800 p-8 rounded-xl border border-gray-700 shadow-lg">
+                      <label className="block text-gray-400 mb-2 font-medium">Daftar Kelas Ajar Anda</label>
+                      <select 
+                        value={selectedKelas}
+                        onChange={(e) => setSelectedKelas(e.target.value)}
+                        className="w-full bg-gray-700 border border-gray-600 rounded-lg p-3 text-white text-lg focus:ring-2 focus:ring-primary focus:border-transparent transition"
                       >
-                          Lanjutkan ➡️
-                      </button>
+                          <option value="">-- Pilih Kelas --</option>
+                          {kelasOptions.map((k) => (
+                              <option key={k.id} value={k.id}>{k.nama}</option>
+                          ))}
+                      </select>
+                      
+                      <div className="mt-8 flex justify-end">
+                          <button 
+                            onClick={handleNextStep}
+                            className="bg-primary hover:bg-secondary text-white px-8 py-3 rounded-lg font-bold shadow-lg transition transform hover:scale-105"
+                          >
+                              Lanjutkan ➡️
+                          </button>
+                      </div>
                   </div>
               </div>
+
+              {/* DAFTAR NILAI TERINPUT */}
+              <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg">
+                  <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                      <span>📋</span> Daftar Nilai Terinput
+                  </h3>
+                  
+                  {loadingHistory ? (
+                      <div className="p-10 text-center text-gray-500">Memuat riwayat...</div>
+                  ) : inputtedGrades.length === 0 ? (
+                      <div className="p-10 text-center text-gray-500 italic border-2 border-dashed border-gray-700 rounded-lg">
+                          Belum ada nilai yang diinput.
+                      </div>
+                  ) : (
+                      <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-gray-700">
+                              <thead className="bg-gray-750">
+                                  <tr>
+                                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase">Kelas</th>
+                                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase">Mapel</th>
+                                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase">Jenis</th>
+                                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase">Materi</th>
+                                      <th className="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase">Siswa</th>
+                                      <th className="px-4 py-3 text-center text-xs font-bold text-gray-400 uppercase">Aksi</th>
+                                  </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-700">
+                                  {inputtedGrades.map((item, idx) => (
+                                      <tr key={idx} className="hover:bg-gray-750 transition-colors">
+                                          <td className="px-4 py-3 text-sm text-white font-medium">{item.kelasNama}</td>
+                                          <td className="px-4 py-3 text-sm text-gray-300">{item.mapelNama}</td>
+                                          <td className="px-4 py-3 text-sm">
+                                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                                  item.jenis === 'FORMATIF' ? 'bg-green-900/30 text-green-400 border border-green-800' :
+                                                  item.jenis === 'SUMATIF' ? 'bg-blue-900/30 text-blue-400 border border-blue-800' :
+                                                  'bg-purple-900/30 text-purple-400 border border-purple-800'
+                                              }`}>
+                                                  {item.jenis}
+                                              </span>
+                                          </td>
+                                          <td className="px-4 py-3 text-sm text-gray-400 italic truncate max-w-[150px]">
+                                              {item.materi || '-'}
+                                          </td>
+                                          <td className="px-4 py-3 text-center text-sm text-gray-300">
+                                              {item.count}
+                                          </td>
+                                          <td className="px-4 py-3 text-center">
+                                              <div className="flex justify-center gap-2">
+                                                  <button 
+                                                    onClick={() => handleEditHistory(item)}
+                                                    className="p-1.5 bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600 hover:text-white rounded transition"
+                                                    title="Edit Nilai"
+                                                  >
+                                                      ✏️
+                                                  </button>
+                                                  <button 
+                                                    onClick={() => setShowDeleteConfirm(item)}
+                                                    className="p-1.5 bg-red-900/20 text-red-500 hover:bg-red-600 hover:text-white rounded transition"
+                                                    title="Hapus Nilai"
+                                                  >
+                                                      🗑️
+                                                  </button>
+                                              </div>
+                                          </td>
+                                      </tr>
+                                  ))}
+                              </tbody>
+                          </table>
+                      </div>
+                  )}
+              </div>
+
+              {/* MODAL KONFIRMASI HAPUS */}
+              {showDeleteConfirm && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                      <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 max-w-md w-full shadow-2xl animate-bounce-in">
+                          <h3 className="text-xl font-bold text-white mb-2">Konfirmasi Hapus</h3>
+                          <p className="text-gray-400 mb-6">
+                              Apakah Anda yakin ingin menghapus seluruh daftar nilai untuk materi <strong className="text-white">"{showDeleteConfirm.materi || '-'}"</strong> di kelas <strong className="text-white">{showDeleteConfirm.kelasNama}</strong>?
+                              <br/><br/>
+                              <span className="text-red-400 text-xs italic">* Tindakan ini tidak dapat dibatalkan.</span>
+                          </p>
+                          <div className="flex justify-end gap-3">
+                              <button 
+                                onClick={() => setShowDeleteConfirm(null)}
+                                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition"
+                              >
+                                  Batal
+                              </button>
+                              <button 
+                                onClick={handleDeleteHistory}
+                                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-lg transition"
+                              >
+                                  Ya, Hapus
+                              </button>
+                          </div>
+                      </div>
+                  </div>
+              )}
           </div>
       );
   }
@@ -443,9 +684,9 @@ export const InputNilai: React.FC<Props> = ({ currentUser, showToast }) => {
           <div className="flex gap-3">
               <button 
                 onClick={handleReset}
-                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm transition"
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm transition flex items-center gap-2"
               >
-                  Ganti Kelas/Mapel
+                  <span>⬅️</span> Kembali
               </button>
               <button 
                 onClick={() => setStep(4)}
@@ -514,6 +755,13 @@ export const InputNilai: React.FC<Props> = ({ currentUser, showToast }) => {
               Pastikan nilai sudah benar sebelum disimpan.
           </div>
           <div className="flex gap-4 w-full md:w-auto justify-end">
+              <button 
+                onClick={handleReset}
+                disabled={saving}
+                className="bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-medium transition w-full md:w-auto flex items-center justify-center gap-2"
+              >
+                  <span>❌</span> Batal
+              </button>
               <button 
                 onClick={handleSaveAll}
                 disabled={saving || students.length === 0}
