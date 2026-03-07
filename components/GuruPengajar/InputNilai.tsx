@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Guru, Siswa, Kelas, Mapel, Nilai, Pengajaran } from '../../types';
+import * as XLSX from 'xlsx';
 
 interface Props {
   currentUser: Guru;
@@ -391,6 +392,79 @@ export const InputNilai: React.FC<Props> = ({ currentUser, showToast }) => {
     }
   };
 
+  const handleExportHistory = async (item: any) => {
+    try {
+      showToast('Menyiapkan file export...', 'success');
+      
+      // Ambil data siswa di kelas tersebut
+      const { data: studentsData } = await supabase
+        .from('siswa')
+        .select('*')
+        .eq('id_kelas', item.kelasId)
+        .order('nama');
+        
+      if (!studentsData || studentsData.length === 0) {
+        showToast('Tidak ada data siswa di kelas ini.', 'error');
+        return;
+      }
+
+      // Ambil data nilai
+      let query = supabase
+        .from('nilai')
+        .select('*')
+        .eq('id_guru', currentUser.id)
+        .eq('id_mapel', item.mapelId)
+        .eq('jenis', item.jenis)
+        .in('id_siswa', studentsData.map(s => s.id));
+
+      if (item.materi) {
+        query = query.eq('materi', item.materi);
+      } else {
+        query = query.is('materi', null);
+      }
+
+      const { data: gradesData } = await query;
+
+      // Gabungkan data
+      const exportData = studentsData.map((siswa, index) => {
+        const record = gradesData?.find(g => g.id_siswa === siswa.id);
+        return {
+          'No': index + 1,
+          'NIS': siswa.nis || '-',
+          'Nama Siswa': siswa.nama,
+          'L/P': siswa.jenis_kelamin || '-',
+          'Nilai': record ? record.nilai : ''
+        };
+      });
+
+      // Buat Excel
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      
+      // Atur lebar kolom
+      const wscols = [
+        { wch: 5 },  // No
+        { wch: 15 }, // NIS
+        { wch: 35 }, // Nama
+        { wch: 5 },  // L/P
+        { wch: 10 }  // Nilai
+      ];
+      ws['!cols'] = wscols;
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Nilai Siswa");
+      
+      // Nama file
+      const safeMateri = (item.materi || 'Tanpa_Materi').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const fileName = `Nilai_${item.kelasNama}_${item.mapelNama}_${item.jenis}_${safeMateri}.xlsx`;
+      
+      XLSX.writeFile(wb, fileName);
+      showToast('✅ Berhasil mengunduh nilai', 'success');
+    } catch (error) {
+      console.error('Export error:', error);
+      showToast('Gagal mengekspor data', 'error');
+    }
+  };
+
   // --- RENDER STEPS ---
 
   // STEP 1: PILIH KELAS
@@ -470,6 +544,13 @@ export const InputNilai: React.FC<Props> = ({ currentUser, showToast }) => {
                                           </td>
                                           <td className="px-4 py-3 text-center">
                                               <div className="flex justify-center gap-2">
+                                                  <button 
+                                                    onClick={() => handleExportHistory(item)}
+                                                    className="p-1.5 bg-green-900/20 text-green-500 hover:bg-green-600 hover:text-white rounded transition"
+                                                    title="Export Nilai"
+                                                  >
+                                                      ⬇️
+                                                  </button>
                                                   <button 
                                                     onClick={() => handleEditHistory(item)}
                                                     className="p-1.5 bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600 hover:text-white rounded transition"
@@ -682,6 +763,19 @@ export const InputNilai: React.FC<Props> = ({ currentUser, showToast }) => {
               </div>
           </div>
           <div className="flex gap-3">
+              <button 
+                onClick={() => handleExportHistory({
+                  kelasId: selectedKelas,
+                  mapelId: selectedMapel,
+                  jenis: selectedJenis,
+                  materi: inputMateri,
+                  kelasNama: getKelasName(),
+                  mapelNama: getMapelName()
+                })}
+                className="px-4 py-2 bg-green-900/40 hover:bg-green-800 text-green-400 border border-green-800 rounded-lg text-sm transition flex items-center gap-2"
+              >
+                  <span>⬇️</span> Export
+              </button>
               <button 
                 onClick={handleReset}
                 className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm transition flex items-center gap-2"
