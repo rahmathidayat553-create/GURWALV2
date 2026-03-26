@@ -106,29 +106,33 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, showToast }) => {
         <form onSubmit={handleLogin} className="space-y-4 sm:space-y-5">
           <div>
             <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">Username</label>
-            <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">👤</span>
+            <div className="flex">
+                <span className="inline-flex items-center px-3 text-sm text-gray-400 bg-gray-700 border border-r-0 border-gray-600 rounded-l-md">
+                  👤
+                </span>
                 <input
                 type="text"
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Masukkan username Anda"
-                className="pl-10 block w-full rounded-md bg-gray-700 border-gray-600 text-white placeholder-gray-500 border p-2 sm:p-2.5 text-sm sm:text-base shadow-sm focus:border-primary focus:ring-primary transition-colors"
+                className="rounded-none rounded-r-md bg-gray-700 border border-gray-600 text-white placeholder-gray-500 block flex-1 min-w-0 w-full p-2 sm:p-2.5 text-sm sm:text-base focus:border-primary focus:ring-primary transition-colors"
                 />
             </div>
           </div>
           <div>
             <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">Password</label>
-            <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">🔒</span>
+            <div className="flex">
+                <span className="inline-flex items-center px-3 text-sm text-gray-400 bg-gray-700 border border-r-0 border-gray-600 rounded-l-md">
+                  🔒
+                </span>
                 <input
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Masukkan kata sandi"
-                className="pl-10 block w-full rounded-md bg-gray-700 border-gray-600 text-white placeholder-gray-500 border p-2 sm:p-2.5 text-sm sm:text-base shadow-sm focus:border-primary focus:ring-primary transition-colors"
+                className="rounded-none rounded-r-md bg-gray-700 border border-gray-600 text-white placeholder-gray-500 block flex-1 min-w-0 w-full p-2 sm:p-2.5 text-sm sm:text-base focus:border-primary focus:ring-primary transition-colors"
                 />
             </div>
           </div>
