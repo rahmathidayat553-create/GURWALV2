@@ -13,5 +13,5 @@ jobs:
       - name: Ping Supabase
         run: |
           curl -X GET "https://plovtqealsfydvoonvqn.supabase.co/rest/v1/siswa?select=id&limit=1" \
-          -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsb3Z0cWVhbHNmeWR2b29udnFuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg2MzQ5MzMsImV4cCI6MjA4NDIxMDkzM30.-wL6cpOYwBnKdQMTxhNgzFnKwKdXlRx4fjlwan9pVHE" \
-          -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsb3Z0cWVhbHNmeWR2b29udnFuIiwicm9sZSI6ImFub24i"
+          -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsb3Z0cWVhbHNmeWR2b29udnFuIiwicm9sZSI6ImFub24i" \
+          -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJIUzI1NiIsInJlZiI6InBsb3Z0cWVhbHNmeWR2b29udnFuIiwicm9sZSI6ImFub24i"
