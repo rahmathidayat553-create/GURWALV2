@@ -25,7 +25,9 @@ export const Layout: React.FC<LayoutProps> = ({
 }) => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
   const sekolah = useSekolah();
 
   // Close notification dropdown when clicking outside
@@ -34,12 +36,15 @@ export const Layout: React.FC<LayoutProps> = ({
       if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
         setIsNotifOpen(false);
       }
+      if (sidebarRef.current && !sidebarRef.current.contains(event.target as Node) && isSidebarOpen) {
+        setIsSidebarOpen(false);
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [notifRef]);
+  }, [notifRef, isSidebarOpen]);
 
   const adminMenu: { id: ViewState; label: string; icon: string }[] = [
     { id: 'DASHBOARD', label: 'Dashboard', icon: '🏠' },
@@ -122,31 +127,50 @@ export const Layout: React.FC<LayoutProps> = ({
   );
 
   return (
-    <div className="flex h-screen bg-gray-900 text-gray-100 font-sans">
-      {/* Sidebar (Desktop) */}
-      <aside className="w-64 bg-gray-800 shadow-md hidden md:flex flex-col border-r border-gray-700 z-30">
-        <div className="p-6 border-b border-gray-700">
-          <div className="flex items-center gap-3 mb-2">
+    <div className="flex h-screen bg-gray-900 text-gray-100 font-sans overflow-hidden">
+      {/* Overlay for mobile sidebar */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-30 md:hidden transition-opacity"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside 
+        ref={sidebarRef}
+        className={`fixed md:static inset-y-0 left-0 w-64 bg-gray-800 shadow-xl flex flex-col border-r border-gray-700 z-40 transform transition-transform duration-300 ease-in-out ${
+          isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        }`}
+      >
+        <div className="p-4 md:p-6 border-b border-gray-700 flex justify-between items-center">
+          <div className="flex items-center gap-3">
             {sekolah.logo_url ? (
-                <img src={sekolah.logo_url} alt="Logo" className="w-10 h-10 object-contain rounded bg-white/10 p-1" />
+                <img src={sekolah.logo_url} alt="Logo" className="w-8 h-8 md:w-10 md:h-10 object-contain rounded bg-white/10 p-1" />
             ) : (
-                <span className="text-3xl">🏫</span>
+                <span className="text-2xl md:text-3xl">🏫</span>
             )}
             <div>
-                 <h1 className="text-sm font-bold text-white uppercase leading-tight line-clamp-2">
+                 <h1 className="text-xs md:text-sm font-bold text-white uppercase leading-tight line-clamp-2">
                     {sekolah.nama || 'GurWal System'}
                  </h1>
-                 <p className="text-[10px] text-gray-400">Sistem Informasi</p>
+                 <p className="text-[9px] md:text-[10px] text-gray-400">Sistem Informasi</p>
             </div>
           </div>
-          <div className="mt-4 pt-4 border-t border-gray-700">
-            <p className="text-sm font-semibold text-white truncate">{currentUser?.nama}</p>
-            <p className="text-xs text-primary font-medium mt-0.5">
-              {isAdmin ? 'Administrator' : 'Guru'}
-            </p>
-          </div>
+          <button 
+            className="md:hidden text-gray-400 hover:text-white"
+            onClick={() => setIsSidebarOpen(false)}
+          >
+            ✕
+          </button>
         </div>
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar">
+        <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-700">
+          <p className="text-xs md:text-sm font-semibold text-white truncate">{currentUser?.nama}</p>
+          <p className="text-[10px] md:text-xs text-primary font-medium mt-0.5">
+            {isAdmin ? 'Administrator' : 'Guru'}
+          </p>
+        </div>
+        <nav className="flex-1 p-3 md:p-4 space-y-1 md:space-y-2 overflow-y-auto custom-scrollbar">
           {isAdmin ? (
             adminMenu.map((item) => (
               <button
@@ -156,9 +180,10 @@ export const Layout: React.FC<LayoutProps> = ({
                         window.open('https://drive.google.com/drive/folders/1oV_TvIyuCFZ4z5JYTgMkplTQCoLet7tA?usp=sharing', '_blank');
                     } else {
                         onChangeView(item.id);
+                        setIsSidebarOpen(false); // Close sidebar on mobile after selection
                     }
                 }}
-                className={`w-full flex items-center space-x-3 px-4 py-2 rounded-lg transition-colors ${
+                className={`w-full flex items-center space-x-3 px-3 md:px-4 py-2 rounded-lg transition-colors text-sm md:text-base ${
                   currentView === item.id && item.id !== 'CEK_UPDATE'
                     ? 'bg-primary text-white shadow-lg shadow-indigo-900/50'
                     : 'text-gray-400 hover:bg-gray-700 hover:text-white'
@@ -172,7 +197,7 @@ export const Layout: React.FC<LayoutProps> = ({
             guruMenu.map((item, idx) => {
               if (item.type === 'header') {
                 return (
-                  <div key={idx} className="pt-4 pb-1 px-4 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  <div key={idx} className="pt-3 md:pt-4 pb-1 px-3 md:px-4 text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wider">
                     {item.label}
                   </div>
                 );
@@ -181,8 +206,11 @@ export const Layout: React.FC<LayoutProps> = ({
               return (
                 <button
                   key={item.id}
-                  onClick={() => onChangeView(item.id as ViewState)}
-                  className={`w-full flex items-center space-x-3 px-4 py-2 rounded-lg transition-colors ${
+                  onClick={() => {
+                    onChangeView(item.id as ViewState);
+                    setIsSidebarOpen(false); // Close sidebar on mobile after selection
+                  }}
+                  className={`w-full flex items-center space-x-3 px-3 md:px-4 py-2 rounded-lg transition-colors text-sm md:text-base ${
                     currentView === item.id
                       ? 'bg-primary text-white shadow-lg shadow-indigo-900/50'
                       : 'text-gray-400 hover:bg-gray-700 hover:text-white'
@@ -195,10 +223,13 @@ export const Layout: React.FC<LayoutProps> = ({
             })
           )}
         </nav>
-        <div className="p-4 border-t border-gray-700">
+        <div className="p-3 md:p-4 border-t border-gray-700">
           <button
-            onClick={() => setShowLogoutConfirm(true)}
-            className="w-full flex items-center space-x-3 px-4 py-2 rounded-lg text-red-400 hover:bg-red-900/30 transition-colors"
+            onClick={() => {
+              setShowLogoutConfirm(true);
+              setIsSidebarOpen(false);
+            }}
+            className="w-full flex items-center space-x-3 px-3 md:px-4 py-2 rounded-lg text-red-400 hover:bg-red-900/30 transition-colors text-sm md:text-base"
           >
             <span>🚪</span>
             <span className="font-medium">Logout</span>
@@ -252,7 +283,15 @@ export const Layout: React.FC<LayoutProps> = ({
 
         {/* Header Mobile (UPDATED) */}
         <header className="bg-gray-800 shadow-sm md:hidden p-4 flex justify-between items-center z-20 border-b border-gray-700">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setIsSidebarOpen(true)}
+              className="text-gray-300 hover:text-white p-1"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
             {sekolah.logo_url && <img src={sekolah.logo_url} alt="Logo" className="w-8 h-8 object-contain rounded bg-white/10 p-1" />}
             <h1 className="text-lg font-bold text-white truncate max-w-[150px]">{sekolah.nama || 'GurWal'}</h1>
           </div>

@@ -2,7 +2,9 @@
 <html lang="id">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#4F46E5" />
+    <link rel="manifest" href="/manifest.json" />
     <title>GurWal - Sistem Informasi Guru Wali</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -63,5 +65,16 @@
   <body class="bg-gray-900 text-gray-100 font-sans antialiased">
     <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').then(registration => {
+          console.log('SW registered: ', registration);
+        }).catch(registrationError => {
+          console.log('SW registration failed: ', registrationError);
+        });
+      });
+    }
+  </script>
 </body>
 </html>
