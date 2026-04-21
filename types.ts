@@ -130,6 +130,7 @@ export type ViewState =
   | 'INPUT_KEHADIRAN_ADMIN'
   | 'REKAP_KEHADIRAN'
   | 'PENGATURAN_SEKOLAH'
+  | 'PANDUAN_ADMIN'
   | 'CEK_UPDATE' // NEW LINK
   // Unified Guru (Binaan + Pengajar)
   | 'GURU_DASHBOARD'

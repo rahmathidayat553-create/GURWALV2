@@ -21,8 +21,9 @@ export function useSekolah() {
     fetchSekolah();
 
     // 2. Realtime Subscription (Optional: updates logo/name instantly if changed in settings)
+    const channelId = `sekolah_global_update_${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
-      .channel('sekolah_global_update')
+      .channel(channelId)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sekolah' }, (payload) => {
           setSekolah(payload.new as Sekolah);
       })

@@ -58,6 +58,7 @@ export const Layout: React.FC<LayoutProps> = ({
     { id: 'REKAP_KEHADIRAN', label: 'Rekap Kehadiran', icon: '📊' },
     { id: 'DATA_PENGAJAR', label: 'Data Pengajar', icon: '📚' },
     { id: 'PENGATURAN_SEKOLAH', label: 'Pengaturan Sekolah', icon: '🏫' },
+    { id: 'PANDUAN_ADMIN', label: 'Panduan', icon: '📖' },
     { id: 'CEK_UPDATE', label: 'Cek Update', icon: '🔄' },
   ];
 

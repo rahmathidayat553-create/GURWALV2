@@ -14,6 +14,7 @@ import { CrudDataPengajar } from './components/CrudDataPengajar';
 import { CrudSekolah } from './components/CrudSekolah';
 import { RekapKehadiranAdmin } from './components/RekapKehadiranAdmin';
 import { InputKehadiranAdmin } from './components/InputKehadiranAdmin'; 
+import { PanduanAdmin } from './components/PanduanAdmin';
 
 // Unified Guru Components
 import { GuruDashboard } from './components/GuruDashboard';
@@ -215,6 +216,7 @@ function App() {
       case 'ANGGOTA_GURWAL': return <CrudAnggotaGurwal showToast={showToast} />;
       case 'DATA_PENGAJAR': return <CrudDataPengajar showToast={showToast} />;
       case 'PENGATURAN_SEKOLAH': return <CrudSekolah showToast={showToast} />;
+      case 'PANDUAN_ADMIN': return <PanduanAdmin />;
       case 'INPUT_KEHADIRAN_ADMIN': return <InputKehadiranAdmin currentUser={session} showToast={showToast} />; 
       case 'REKAP_KEHADIRAN': return <RekapKehadiranAdmin showToast={showToast} />;
       case 'DASHBOARD': return <AdminDashboard />;
