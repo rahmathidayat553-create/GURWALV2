@@ -15,6 +15,7 @@ import { CrudSekolah } from './components/CrudSekolah';
 import { RekapKehadiranAdmin } from './components/RekapKehadiranAdmin';
 import { InputKehadiranAdmin } from './components/InputKehadiranAdmin'; 
 import { PanduanAdmin } from './components/PanduanAdmin';
+import { PanduanGuru } from './components/PanduanGuru';
 
 // Unified Guru Components
 import { GuruDashboard } from './components/GuruDashboard';
@@ -223,6 +224,7 @@ function App() {
       
       // UNIFIED GURU
       case 'GURU_DASHBOARD': return <GuruDashboard currentUser={session} />;
+      case 'PANDUAN_GURU': return <PanduanGuru />;
       
       // BINAAN (WALI)
       case 'GURU_BINAAN_LIST': return <DaftarBinaan currentUser={session} showToast={showToast} />;

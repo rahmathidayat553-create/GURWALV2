@@ -64,6 +64,7 @@ export const Layout: React.FC<LayoutProps> = ({
 
   const guruMenu = [
     { type: 'link', id: 'GURU_DASHBOARD', label: 'Dashboard', icon: '🏠' },
+    { type: 'link', id: 'PANDUAN_GURU', label: 'Panduan', icon: '📖' },
     { type: 'header', label: 'BINAAN (WALI KELAS)' },
     { type: 'link', id: 'GURU_BINAAN_LIST', label: 'Daftar Binaan', icon: '👩‍🎓' },
     { type: 'link', id: 'GURU_BINAAN_KEHADIRAN', label: 'Kehadiran', icon: '🗓️' },

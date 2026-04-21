@@ -134,6 +134,7 @@ export type ViewState =
   | 'CEK_UPDATE' // NEW LINK
   // Unified Guru (Binaan + Pengajar)
   | 'GURU_DASHBOARD'
+  | 'PANDUAN_GURU'
   | 'GURU_BINAAN_LIST'
   | 'GURU_BINAAN_KEHADIRAN'
   | 'GURU_IMPORT_KEHADIRAN'
