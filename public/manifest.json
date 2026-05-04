@@ -1,0 +1,16 @@
+{
+  "name": "GurWal - Guru Wali",
+  "short_name": "GurWal",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#4F46E5",
+  "description": "Sistem Informasi Guru Wali",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3233/3233497.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
