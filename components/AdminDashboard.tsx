@@ -30,6 +30,7 @@ export const AdminDashboard: React.FC = () => {
   const [checkPerformed, setCheckPerformed] = useState(false);
   const [missingData, setMissingData] = useState<GroupedMissing[]>([]);
   const [isMonitorOpen, setIsMonitorOpen] = useState(false); // State untuk Modal
+  const [backupLoading, setBackupLoading] = useState(false);
 
   useEffect(() => {
     const fetchDashboardStats = async () => {
@@ -329,6 +330,60 @@ export const AdminDashboard: React.FC = () => {
     doc.save(`Monitoring_Kehadiran_${monitorMonth}.pdf`);
   };
 
+  const handleBackupData = async () => {
+    setBackupLoading(true);
+    try {
+      const { data: guru } = await supabase.from('guru').select('*');
+      const { data: siswa } = await supabase.from('siswa').select('*');
+      const { data: kelas } = await supabase.from('kelas').select('*');
+      const { data: mapel } = await supabase.from('mapel').select('*');
+      const { data: sekolah } = await supabase.from('sekolah').select('*');
+      const { data: bimbingan } = await supabase.from('bimbingan').select('*');
+      const { data: pengajaran } = await supabase.from('pengajaran').select('*');
+      const { data: kehadiran } = await supabase.from('kehadiran').select('*');
+      const { data: pelanggaran } = await supabase.from('pelanggaran').select('*');
+      const { data: prestasi } = await supabase.from('prestasi').select('*');
+      const { data: nilai } = await supabase.from('nilai').select('*');
+      const { data: kalender_pendidikan } = await supabase.from('kalender_pendidikan').select('*');
+      
+      const backupData = {
+        meta: {
+          exportedAt: new Date().toISOString(),
+          version: '1.0',
+          type: 'full_backup'
+        },
+        collections: {
+          guru,
+          siswa,
+          kelas,
+          mapel,
+          sekolah,
+          bimbingan,
+          pengajaran,
+          kehadiran,
+          pelanggaran,
+          prestasi,
+          nilai,
+          kalender_pendidikan
+        }
+      };
+
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+      const downloadAnchorNode = document.createElement('a');
+      downloadAnchorNode.setAttribute("href", dataStr);
+      downloadAnchorNode.setAttribute("download", `Backup_Migrasi_GurWal_${new Date().getTime()}.json`);
+      document.body.appendChild(downloadAnchorNode); 
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
+      
+    } catch (e) {
+      console.error("Backup failed", e);
+      alert("Gagal melakukan backup data");
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
   const Card = ({ title, count, color, icon }: any) => (
     <div className={`bg-gray-800 p-6 rounded-lg shadow border-l-4 ${color} flex items-center justify-between`}>
       <div>
@@ -351,6 +406,25 @@ export const AdminDashboard: React.FC = () => {
         <Card title="Total Siswa" count={stats.siswa} icon="🎓" color="border-green-500" />
         <Card title="Jumlah Kelas" count={stats.kelas} icon="🏫" color="border-purple-500" />
         <Card title="Mata Pelajaran" count={stats.mapel} icon="📘" color="border-yellow-500" />
+      </div>
+
+      {/* PLAN MIGRASI - BACKUP DATA */}
+      <div className="bg-indigo-900/30 p-6 rounded-lg border border-indigo-700/50 mt-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <h3 className="text-xl font-bold text-indigo-400">🗄️ Rencana Migrasi Firebase</h3>
+                <p className="text-indigo-200/70 text-sm mt-1">Lakukan backup data (Guru, Siswa, Kelas, Mapel) ke file JSON terlebih dahulu sebelum melakukan eksekusi migrasi database ke Firebase secara penuh.</p>
+            </div>
+            <div>
+                <button 
+                    onClick={handleBackupData} 
+                    disabled={backupLoading}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded font-bold shadow-lg flex items-center gap-2 disabled:opacity-50 transition"
+                >
+                    {backupLoading ? 'Mendownload...' : '⬇️ Backup File JSON Migrasi'}
+                </button>
+            </div>
+        </div>
       </div>
 
       <div className="bg-gray-800 p-6 rounded-lg border border-gray-700">
