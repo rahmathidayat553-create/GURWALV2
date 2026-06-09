@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { Guru } from '../types';
+import { GoogleCalendar } from './GoogleCalendar';
 
 interface GuruDashboardProps {
   currentUser: Guru;
@@ -132,6 +133,9 @@ export const GuruDashboard: React.FC<GuruDashboardProps> = ({ currentUser }) => 
             </div>
         )}
       </div>
+
+      {/* SECTION GOOGLE CALENDAR */}
+      <GoogleCalendar />
     </div>
   );
 };
