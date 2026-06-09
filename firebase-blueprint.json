@@ -1,0 +1,179 @@
+{
+  "entities": {
+    "guru": {
+      "title": "Guru",
+      "description": "Teacher entity",
+      "type": "object",
+      "properties": {
+        "nama": { "type": "string" },
+        "jenis_kelamin": { "type": "string" },
+        "peran": { "type": "string" },
+        "no_hp": { "type": "string" },
+        "username": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["nama", "peran", "username"]
+    },
+    "kelas": {
+      "title": "Kelas",
+      "description": "Class entity",
+      "type": "object",
+      "properties": {
+        "kode": { "type": "string" },
+        "nama": { "type": "string" }
+      },
+      "required": ["kode", "nama"]
+    },
+    "mapel": {
+      "title": "Mapel",
+      "description": "Subject entity",
+      "type": "object",
+      "properties": {
+        "kode": { "type": "string" },
+        "nama": { "type": "string" }
+      },
+      "required": ["kode", "nama"]
+    },
+    "siswa": {
+      "title": "Siswa",
+      "description": "Student entity",
+      "type": "object",
+      "properties": {
+        "nisn": { "type": "string" },
+        "nama": { "type": "string" },
+        "jenis_kelamin": { "type": "string" },
+        "tanggal_lahir": { "type": "string" },
+        "no_hp": { "type": "string" },
+        "id_kelas": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["nisn", "nama"]
+    },
+    "bimbingan": {
+      "title": "Bimbingan",
+      "description": "Mentoring assignment",
+      "type": "object",
+      "properties": {
+        "id_guru": { "type": "string" },
+        "id_siswa": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id_guru", "id_siswa"]
+    },
+    "pengajaran": {
+      "title": "Pengajaran",
+      "description": "Teaching assignment",
+      "type": "object",
+      "properties": {
+        "id_guru": { "type": "string" },
+        "id_mapel": { "type": "string" },
+        "id_kelas": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id_guru", "id_mapel", "id_kelas"]
+    },
+    "kehadiran": {
+      "title": "Kehadiran",
+      "description": "Attendance record",
+      "type": "object",
+      "properties": {
+        "id_pencatat": { "type": "string" },
+        "id_siswa": { "type": "string" },
+        "id_guru": { "type": "string" },
+        "tanggal": { "type": "string" },
+        "status": { "type": "string" },
+        "catatan": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id_siswa", "id_guru", "tanggal", "status"]
+    },
+    "pelanggaran": {
+      "title": "Pelanggaran",
+      "description": "Violation record",
+      "type": "object",
+      "properties": {
+        "id_siswa": { "type": "string" },
+        "id_guru": { "type": "string" },
+        "deskripsi": { "type": "string" },
+        "tindakan": { "type": "string" },
+        "tanggal": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id_siswa", "id_guru", "deskripsi"]
+    },
+    "prestasi": {
+      "title": "Prestasi",
+      "description": "Achievement record",
+      "type": "object",
+      "properties": {
+        "id_siswa": { "type": "string" },
+        "id_guru": { "type": "string" },
+        "deskripsi": { "type": "string" },
+        "tingkat": { "type": "string" },
+        "tanggal": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id_siswa", "id_guru", "deskripsi"]
+    },
+    "nilai": {
+      "title": "Nilai",
+      "description": "Grade record",
+      "type": "object",
+      "properties": {
+        "materi": { "type": "string" },
+        "id_siswa": { "type": "string" },
+        "id_guru": { "type": "string" },
+        "id_mapel": { "type": "string" },
+        "jenis": { "type": "string" },
+        "nilai": { "type": "number" },
+        "tanggal": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id_siswa", "id_guru", "id_mapel", "jenis"]
+    },
+    "sekolah": {
+      "title": "Sekolah",
+      "description": "School information",
+      "type": "object",
+      "properties": {
+        "hari_sekolah": { "type": "number" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "nama": { "type": "string" },
+        "npsn": { "type": "string" },
+        "alamat": { "type": "string" },
+        "email": { "type": "string" },
+        "no_telp": { "type": "string" },
+        "logo_url": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["nama"]
+    },
+    "kalender_pendidikan": {
+      "title": "Kalender Pendidikan",
+      "description": "Academic calendar",
+      "type": "object",
+      "properties": {
+        "tanggal": { "type": "string" },
+        "jenis": { "type": "string" },
+        "keterangan": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["tanggal", "jenis"]
+    }
+  },
+  "firestore": {
+    "guru": { "schema": { "$ref": "#/entities/guru" }, "description": "Guru collection" },
+    "kelas": { "schema": { "$ref": "#/entities/kelas" }, "description": "Kelas collection" },
+    "mapel": { "schema": { "$ref": "#/entities/mapel" }, "description": "Mapel collection" },
+    "siswa": { "schema": { "$ref": "#/entities/siswa" }, "description": "Siswa collection" },
+    "bimbingan": { "schema": { "$ref": "#/entities/bimbingan" }, "description": "Bimbingan collection" },
+    "pengajaran": { "schema": { "$ref": "#/entities/pengajaran" }, "description": "Pengajaran collection" },
+    "kehadiran": { "schema": { "$ref": "#/entities/kehadiran" }, "description": "Kehadiran collection" },
+    "pelanggaran": { "schema": { "$ref": "#/entities/pelanggaran" }, "description": "Pelanggaran collection" },
+    "prestasi": { "schema": { "$ref": "#/entities/prestasi" }, "description": "Prestasi collection" },
+    "nilai": { "schema": { "$ref": "#/entities/nilai" }, "description": "Nilai collection" },
+    "sekolah": { "schema": { "$ref": "#/entities/sekolah" }, "description": "Sekolah info collection" },
+    "kalender_pendidikan": { "schema": { "$ref": "#/entities/kalender_pendidikan" }, "description": "Academic calendar collection" }
+  }
+}

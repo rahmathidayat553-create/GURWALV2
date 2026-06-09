@@ -1,10 +1,12 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useSekolah } from '../hooks/useSekolah';
+import { db } from '../firebaseClient';
+import { doc, writeBatch } from 'firebase/firestore';
 
 interface MissingRecord {
   tanggal: string;
@@ -384,6 +386,63 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadLoading, setUploadLoading] = useState(false);
+
+  const handleUploadFirebase = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadLoading(true);
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const content = e.target?.result as string;
+        const backupData = JSON.parse(content);
+
+        if (!backupData || !backupData.collections) {
+          throw new Error("Format JSON tidak valid");
+        }
+
+        const collections = backupData.collections;
+        const colNames = Object.keys(collections);
+
+        let totalDocs = 0;
+        
+        for (const colName of colNames) {
+          const items = collections[colName];
+          if (!Array.isArray(items) || items.length === 0) continue;
+
+          // Process in batches of 500 (Firestore limit)
+          const chunks = [];
+          for (let i = 0; i < items.length; i += 500) {
+            chunks.push(items.slice(i, i + 500));
+          }
+
+          for (const chunk of chunks) {
+            const batch = writeBatch(db);
+            for (const item of chunk) {
+              const docId = item.id || crypto.randomUUID();
+              const docRef = doc(db, colName, docId);
+              batch.set(docRef, item);
+              totalDocs++;
+            }
+            await batch.commit();
+          }
+        }
+
+        alert(`Yeay! Berhasil migrate ${totalDocs} dokumen ke Firebase!`);
+      } catch (err) {
+        console.error("Migration error:", err);
+        alert("Gagal melakukan migrasi ke Firebase. Pastikan file JSON formatnya sesuai.");
+      } finally {
+        setUploadLoading(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const Card = ({ title, count, color, icon }: any) => (
     <div className={`bg-gray-800 p-6 rounded-lg shadow border-l-4 ${color} flex items-center justify-between`}>
       <div>
@@ -412,16 +471,30 @@ export const AdminDashboard: React.FC = () => {
       <div className="bg-indigo-900/30 p-6 rounded-lg border border-indigo-700/50 mt-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-                <h3 className="text-xl font-bold text-indigo-400">🗄️ Rencana Migrasi Firebase</h3>
-                <p className="text-indigo-200/70 text-sm mt-1">Lakukan backup data (Guru, Siswa, Kelas, Mapel) ke file JSON terlebih dahulu sebelum melakukan eksekusi migrasi database ke Firebase secara penuh.</p>
+                <h3 className="text-xl font-bold text-indigo-400">🗄️ Migrasi Firebase (Tahap 1)</h3>
+                <p className="text-indigo-200/70 text-sm mt-1">Lakukan backup data dari Supabase ke file JSON, lalu upload JSON tersebut untuk memasukkan semua data ke Firebase.</p>
             </div>
-            <div>
+            <div className="flex flex-col sm:flex-row gap-3">
                 <button 
                     onClick={handleBackupData} 
                     disabled={backupLoading}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded font-bold shadow-lg flex items-center gap-2 disabled:opacity-50 transition"
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded font-bold shadow flex items-center justify-center gap-2 disabled:opacity-50 transition"
                 >
-                    {backupLoading ? 'Mendownload...' : '⬇️ Backup File JSON Migrasi'}
+                    {backupLoading ? 'Mendownload...' : '⬇️ Backup JSON'}
+                </button>
+                <input 
+                  type="file" 
+                  accept=".json" 
+                  ref={fileInputRef} 
+                  onChange={handleUploadFirebase} 
+                  className="hidden" 
+                />
+                <button 
+                    onClick={() => fileInputRef.current?.click()} 
+                    disabled={uploadLoading}
+                    className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded font-bold shadow flex items-center justify-center gap-2 disabled:opacity-50 transition"
+                >
+                    {uploadLoading ? 'Mengunggah...' : '🚀 Inject JSON ke Firebase'}
                 </button>
             </div>
         </div>
