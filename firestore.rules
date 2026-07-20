@@ -3,48 +3,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /{document=**} {
-      allow read, write: if false;
-    }
-    
-    function isSignedIn() {
-      return request.auth != null;
-    }
-    
-    match /guru/{guruId} {
-      allow read, write: if isSignedIn();
-    }
-    match /kelas/{kelasId} {
-      allow read, write: if isSignedIn();
-    }
-    match /mapel/{mapelId} {
-      allow read, write: if isSignedIn();
-    }
-    match /siswa/{siswaId} {
-      allow read, write: if isSignedIn();
-    }
-    match /bimbingan/{bimbinganId} {
-      allow read, write: if isSignedIn();
-    }
-    match /pengajaran/{pengajaranId} {
-      allow read, write: if isSignedIn();
-    }
-    match /kehadiran/{kehadiranId} {
-      allow read, write: if isSignedIn();
-    }
-    match /pelanggaran/{pelanggaranId} {
-      allow read, write: if isSignedIn();
-    }
-    match /prestasi/{prestasiId} {
-      allow read, write: if isSignedIn();
-    }
-    match /nilai/{nilaiId} {
-      allow read, write: if isSignedIn();
-    }
-    match /sekolah/{sekolahId} {
-      allow read, write: if isSignedIn();
-    }
-    match /kalender_pendidikan/{kalenderId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if true;
     }
   }
 }

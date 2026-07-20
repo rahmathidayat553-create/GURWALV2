@@ -422,7 +422,10 @@ export const AdminDashboard: React.FC = () => {
           for (const chunk of chunks) {
             const batch = writeBatch(db);
             for (const item of chunk) {
-              const docId = item.id || crypto.randomUUID();
+              const rawId = item.id !== undefined && item.id !== null ? String(item.id) : '';
+              const docId = rawId || (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' 
+                ? crypto.randomUUID() 
+                : Math.random().toString(36).substring(2, 15) + Date.now().toString(36));
               const docRef = doc(db, colName, docId);
               batch.set(docRef, item);
               totalDocs++;
