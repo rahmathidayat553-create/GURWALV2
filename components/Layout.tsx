@@ -26,9 +26,26 @@ export const Layout: React.FC<LayoutProps> = ({
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sidebar_collapsed');
+      return saved === 'true';
+    } catch {
+      return false;
+    }
+  });
   const notifRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
   const sekolah = useSekolah();
+
+  // Save sidebar collapse state
+  useEffect(() => {
+    try {
+      localStorage.setItem('sidebar_collapsed', String(isSidebarCollapsed));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [isSidebarCollapsed]);
 
   // Close notification dropdown when clicking outside
   useEffect(() => {
@@ -141,8 +158,12 @@ export const Layout: React.FC<LayoutProps> = ({
       {/* Sidebar */}
       <aside 
         ref={sidebarRef}
-        className={`fixed md:static inset-y-0 left-0 w-64 bg-gray-800 shadow-xl flex flex-col border-r border-gray-700 z-40 transform transition-transform duration-300 ease-in-out ${
-          isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        className={`fixed md:static inset-y-0 left-0 bg-gray-800 shadow-xl flex flex-col border-r border-gray-700 z-40 transition-all duration-300 ease-in-out ${
+          isSidebarCollapsed 
+            ? 'md:w-0 md:opacity-0 md:overflow-hidden md:border-r-0 md:pointer-events-none' 
+            : 'w-64 opacity-100'
+        } ${
+          isSidebarOpen ? 'w-64 translate-x-0 opacity-100' : '-translate-x-full md:translate-x-0'
         }`}
       >
         <div className="p-4 md:p-6 border-b border-gray-700 flex justify-between items-center">
@@ -244,13 +265,28 @@ export const Layout: React.FC<LayoutProps> = ({
         
         {/* Header Desktop (NEW) */}
         <header className="hidden md:flex bg-gray-800 border-b border-gray-700 h-16 items-center justify-between px-8 shadow-md z-20">
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-               <span className="text-primary opacity-80">
-                   {/* Icon based on view? Simplification: Just generic icon */}
-                   📂
-               </span>
-               {getPageTitle(currentView)}
-            </h2>
+            <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                  className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition focus:outline-none"
+                  title={isSidebarCollapsed ? "Buka Sidebar" : "Tutup Sidebar"}
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    {isSidebarCollapsed ? (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                    ) : (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h16" />
+                    )}
+                  </svg>
+                </button>
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                   <span className="text-primary opacity-80">
+                       {/* Icon based on view? Simplification: Just generic icon */}
+                       📂
+                   </span>
+                   {getPageTitle(currentView)}
+                </h2>
+            </div>
 
             <div className="flex items-center gap-6">
                 {/* Notification Bell */}
